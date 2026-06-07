@@ -222,6 +222,7 @@ class ClippingsRepository(
 
     private suspend fun processPending() {
         // Sequential to respect the free-tier rate limit (~15 rpm).
+        val userId = com.example.paperclipper.UserId.get(context)
         val pending = dao.withStatus(ClippingStatus.PENDING.name)
         for (row in pending) {
             val file = File(clippingsDir(context), row.fileName)
@@ -230,7 +231,7 @@ class ClippingsRepository(
                 continue
             }
             dao.updateStatus(row.fileName, ClippingStatus.PROCESSING.name)
-            val result = GeminiClient.analyze(file.readBytes(), mimeTypeFor(file))
+            val result = GeminiClient.analyze(file.readBytes(), mimeTypeFor(file), userId)
             when (result) {
                 is GeminiResult.Success -> dao.updateResult(
                     fileName = row.fileName,

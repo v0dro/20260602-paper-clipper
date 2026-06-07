@@ -65,6 +65,7 @@ import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -118,7 +119,9 @@ import io.moyuru.cropify.Cropify
 import io.moyuru.cropify.rememberCropifyState
 import java.io.File
 import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -221,6 +224,15 @@ fun ClipperApp() {
             onSignInResult = { data -> vm.handleSignInResult(data) },
             onSignOut = { vm.signOut() },
             onClearAll = { vm.clearAll() },
+            onSendFeedback = { msg ->
+                vm.sendFeedback(msg) { ok ->
+                    Toast.makeText(
+                        context,
+                        if (ok) "Feedback sent — thank you!" else "Couldn't send feedback",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            },
         )
         is Screen.Preview -> {
             BackHandler { screen = Screen.Home }
@@ -294,6 +306,7 @@ private fun HomeScreen(
     onSignInResult: (Intent?) -> Unit,
     onSignOut: () -> Unit,
     onClearAll: () -> Unit,
+    onSendFeedback: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -312,6 +325,8 @@ private fun HomeScreen(
     var sortDescending by remember { mutableStateOf(true) }
     var showFilter by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
+    var showFeedback by remember { mutableStateOf(false) }
+    var feedbackText by remember { mutableStateOf("") }
 
     // While selecting, Back clears the selection instead of leaving the screen.
     BackHandler(enabled = inSelectionMode) { selected = emptySet() }
@@ -336,6 +351,33 @@ private fun HomeScreen(
                 showFilter = false
             },
             onDismiss = { showFilter = false },
+        )
+    }
+
+    if (showFeedback) {
+        AlertDialog(
+            onDismissRequest = { showFeedback = false },
+            title = { Text("Give feedback") },
+            text = {
+                OutlinedTextField(
+                    value = feedbackText,
+                    onValueChange = { feedbackText = it },
+                    placeholder = { Text("What's working, what's broken, ideas…") },
+                    minLines = 4,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = feedbackText.isNotBlank(),
+                    onClick = {
+                        onSendFeedback(feedbackText)
+                        feedbackText = ""
+                        showFeedback = false
+                    },
+                ) { Text("Send") }
+            },
+            dismissButton = { TextButton(onClick = { showFeedback = false }) { Text("Cancel") } },
         )
     }
 
@@ -416,9 +458,9 @@ private fun HomeScreen(
 
                 Spacer(Modifier.weight(1f))
 
-                // Log out pinned to the very bottom of the panel (only when logged in).
+                // Bottom-pinned actions: Log out (if logged in) then Give feedback at the very bottom.
+                HorizontalDivider()
                 if (userEmail != null) {
-                    HorizontalDivider()
                     NavigationDrawerItem(
                         label = { Text("Log out") },
                         selected = false,
@@ -426,9 +468,18 @@ private fun HomeScreen(
                             scope.launch { drawerState.close() }
                             onSignOut()
                         },
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     )
                 }
+                NavigationDrawerItem(
+                    label = { Text("Give feedback") },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        showFeedback = true
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                )
             }
         },
     ) {
@@ -549,7 +600,9 @@ private fun HomeScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(items = visible, key = { it.file.absolutePath }) { clipping ->
+                dateSections(visible).forEach { (header, sectionItems) ->
+                    stickyHeader(key = "header:$header") { DateHeader(header) }
+                    items(items = sectionItems, key = { it.file.absolutePath }) { clipping ->
                     val file = clipping.file
                     val isSelected = file in selected
                     Box(
@@ -633,6 +686,7 @@ private fun HomeScreen(
                                 Checkbox(checked = isSelected, onCheckedChange = null)
                             }
                         }
+                    }
                     }
                 }
             }
@@ -769,6 +823,44 @@ private fun ImageViewerScreen(file: File, onBack: () -> Unit) {
                 tint = Color.White,
             )
         }
+    }
+}
+
+/**
+ * Groups an already-sorted clipping list into date sections (Google Photos style): a month with a
+ * single clipping becomes one "June 2026" header; a month with several is split into per-day
+ * headers ("7 June 2026"). Order is preserved, so it follows the chosen newest/oldest sort.
+ */
+private fun dateSections(visible: List<Clipping>): List<Pair<String, List<Clipping>>> {
+    val byMonth = LinkedHashMap<String, MutableList<Clipping>>()
+    for (c in visible) byMonth.getOrPut(fmt("yyyy-MM", c.createdAt)) { mutableListOf() }.add(c)
+
+    val out = mutableListOf<Pair<String, List<Clipping>>>()
+    for (monthItems in byMonth.values) {
+        if (monthItems.size == 1) {
+            out += fmt("MMMM yyyy", monthItems[0].createdAt) to monthItems
+        } else {
+            val byDay = LinkedHashMap<String, MutableList<Clipping>>()
+            for (c in monthItems) byDay.getOrPut(fmt("yyyy-MM-dd", c.createdAt)) { mutableListOf() }.add(c)
+            for (dayItems in byDay.values) {
+                out += fmt("d MMMM yyyy", dayItems[0].createdAt) to dayItems
+            }
+        }
+    }
+    return out
+}
+
+private fun fmt(pattern: String, time: Long): String =
+    SimpleDateFormat(pattern, Locale.getDefault()).format(Date(time))
+
+@Composable
+private fun DateHeader(text: String) {
+    Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(vertical = 6.dp),
+        )
     }
 }
 

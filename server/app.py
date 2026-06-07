@@ -13,7 +13,10 @@ import base64
 import json
 import os
 import re
+import sqlite3
+import threading
 import time
+from datetime import date
 from email.message import EmailMessage
 from email.utils import formatdate
 from pathlib import Path
@@ -33,6 +36,39 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
 # Feedback is saved as .eml files in a local folder on this machine (no external email sent).
 FEEDBACK_DIR = Path(os.getenv("FEEDBACK_DIR", "feedback")).expanduser()
 FEEDBACK_TO = os.getenv("FEEDBACK_TO", "developer").strip()
+
+# Per-user daily analysis cap (counts successful analyses; persisted in SQLite).
+DAILY_LIMIT = int(os.getenv("DAILY_LIMIT", "100"))
+USAGE_DB = Path(os.getenv("USAGE_DB", "usage.db")).expanduser()
+_usage_lock = threading.Lock()
+
+
+def _usage_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(USAGE_DB)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS usage "
+        "(user_id TEXT NOT NULL, day TEXT NOT NULL, count INTEGER NOT NULL, "
+        "PRIMARY KEY (user_id, day))"
+    )
+    return conn
+
+
+def usage_count(user_id: str, day: str) -> int:
+    with _usage_lock, _usage_conn() as conn:
+        row = conn.execute(
+            "SELECT count FROM usage WHERE user_id = ? AND day = ?", (user_id, day)
+        ).fetchone()
+        return row[0] if row else 0
+
+
+def usage_increment(user_id: str, day: str) -> None:
+    with _usage_lock, _usage_conn() as conn:
+        conn.execute(
+            "INSERT INTO usage (user_id, day, count) VALUES (?, ?, 1) "
+            "ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1",
+            (user_id, day),
+        )
+        conn.commit()
 
 GEMINI_ENDPOINT = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
@@ -99,13 +135,26 @@ async def health() -> dict:
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
-async def analyze(req: AnalyzeRequest, authorization: str | None = Header(default=None)):
+async def analyze(
+    req: AnalyzeRequest,
+    authorization: str | None = Header(default=None),
+    x_user_id: str | None = Header(default=None),
+):
     # --- auth ---
     if not PROXY_TOKEN:
         raise HTTPException(status_code=500, detail="Server PROXY_TOKEN is not configured")
     expected = f"Bearer {PROXY_TOKEN}"
     if authorization != expected:
         raise HTTPException(status_code=401, detail="Invalid or missing token")
+
+    # --- per-user daily cap (check before spending a Gemini call) ---
+    user_id = (x_user_id or "anonymous").strip() or "anonymous"
+    today = date.today().isoformat()
+    if usage_count(user_id, today) >= DAILY_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily limit reached ({DAILY_LIMIT} analyses/day). Try again tomorrow.",
+        )
 
     # --- validate the image payload (client error before server-config error) ---
     try:
@@ -166,6 +215,7 @@ async def analyze(req: AnalyzeRequest, authorization: str | None = Header(defaul
             print(f"[analyze] attempt {attempt}: empty/unparseable: {resp.text[:300]}", flush=True)
             continue
 
+        usage_increment(user_id, today)  # count only successful analyses
         return AnalyzeResponse(extractedText=extracted, summary=summary)
 
     raise HTTPException(status_code=502, detail=last_error)

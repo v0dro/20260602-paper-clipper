@@ -3,3 +3,5 @@
 __pycache__/
 *.pyc
 cloudflared/*.json
+feedback/
+usage.db

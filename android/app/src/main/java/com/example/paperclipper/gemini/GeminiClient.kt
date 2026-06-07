@@ -21,7 +21,7 @@ sealed interface GeminiResult {
  * and model now live server-side.
  */
 object GeminiClient {
-    suspend fun analyze(imageBytes: ByteArray, mimeType: String): GeminiResult =
+    suspend fun analyze(imageBytes: ByteArray, mimeType: String, userId: String): GeminiResult =
         withContext(Dispatchers.IO) {
             val baseUrl = BuildConfig.SERVER_URL.trimEnd('/')
             if (baseUrl.isBlank()) {
@@ -44,6 +44,7 @@ object GeminiClient {
                     doOutput = true
                     setRequestProperty("Content-Type", "application/json")
                     setRequestProperty("Authorization", "Bearer ${BuildConfig.PROXY_TOKEN}")
+                    setRequestProperty("X-User-Id", userId)
                 }
                 conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
 

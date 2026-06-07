@@ -89,6 +89,14 @@ class ClippingsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Sends feedback to the backend; [onResult] gets success/failure on completion. */
+    fun sendFeedback(message: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val ok = FeedbackClient.send(message.trim(), authEmail.value)
+            onResult(ok)
+        }
+    }
+
     // --- Auth ---
     val authError: StateFlow<String?> = authManager.signInError
     fun clearAuthError() = authManager.clearSignInError()
