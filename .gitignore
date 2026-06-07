@@ -32,3 +32,11 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# iOS / Xcode
+**/xcuserdata/
+DerivedData/
+*.xcodeproj
+ios/**/GoogleService-Info.plist
+ios/Config.xcconfig
+.DS_Store

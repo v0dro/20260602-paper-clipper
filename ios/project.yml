@@ -1,0 +1,49 @@
+name: PaperClipper
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "17.0"
+
+packages:
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    minVersion: 11.0.0
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    minVersion: 8.0.0
+
+targets:
+  PaperClipper:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - PaperClipper
+    configFiles:
+      Debug: Config.xcconfig
+      Release: Config.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.paperclipper
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"   # iPhone
+    info:
+      path: PaperClipper/Info.plist
+      properties:
+        CFBundleDisplayName: Paper Clipper
+        UILaunchScreen: {}
+        NSCameraUsageDescription: "Used to photograph newspaper clippings."
+        NSPhotoLibraryUsageDescription: "Used to import clipping photos."
+        # Read at runtime by AppConfig. Values come from Config.xcconfig.
+        SERVER_URL: $(SERVER_URL)
+        PROXY_TOKEN: $(PROXY_TOKEN)
+        # Google Sign-In callback scheme (filled once GoogleService-Info.plist exists).
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              - $(REVERSED_CLIENT_ID)
+    dependencies:
+      - package: Firebase
+        product: FirebaseAuth
+      - package: GoogleSignIn
+        product: GoogleSignIn

@@ -1,0 +1,1080 @@
+package com.example.paperclipper
+
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.graphics.RectF
+import android.media.ExifInterface
+import android.net.Uri
+import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
+import com.example.paperclipper.data.Clipping
+import com.example.paperclipper.data.ClippingStatus
+import com.example.paperclipper.data.CommentEntity
+import com.example.paperclipper.data.TagEntity
+import com.example.paperclipper.data.clippingsDir
+import io.moyuru.cropify.Cropify
+import io.moyuru.cropify.rememberCropifyState
+import java.io.File
+import java.text.DateFormat
+import java.util.Date
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            MaterialTheme {
+                ClipperApp()
+            }
+        }
+    }
+}
+
+private sealed interface Screen {
+    data object Home : Screen
+    data class Preview(val file: File) : Screen
+    data class Crop(val file: File) : Screen
+    data class Lasso(val file: File) : Screen
+    data class Detail(val fileName: String) : Screen
+}
+
+@Composable
+fun ClipperApp() {
+    val context = LocalContext.current
+    val vm: ClippingsViewModel = viewModel()
+    val clippings by vm.clippings.collectAsState()
+    val userEmail by vm.authEmail.collectAsState()
+    var pendingFile by remember { mutableStateOf<File?>(null) }
+    var screen: Screen by remember { mutableStateOf(Screen.Home) }
+
+    // Whenever we land back on the library, reconcile the DB with disk and analyze new clippings.
+    // This covers every "saved" path: capture-back, crop-back, and lasso-Done.
+    LaunchedEffect(screen) {
+        if (screen is Screen.Home) vm.refresh()
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        val captured = pendingFile
+        pendingFile = null
+        if (success && captured != null) {
+            screen = Screen.Preview(captured)
+        } else {
+            captured?.delete()
+        }
+    }
+
+    fun startCapture() {
+        val (file, uri) = newClippingTarget(context)
+        pendingFile = file
+        cameraLauncher.launch(uri)
+    }
+
+    val permLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) startCapture() }
+
+    when (val s = screen) {
+        Screen.Home -> HomeScreen(
+            clippings = clippings,
+            userEmail = userEmail,
+            onTakePhoto = {
+                val granted = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.CAMERA,
+                ) == PackageManager.PERMISSION_GRANTED
+                if (granted) startCapture()
+                else permLauncher.launch(Manifest.permission.CAMERA)
+            },
+            onOpen = { clipping -> screen = Screen.Detail(clipping.file.name) },
+            onDelete = { toDelete -> vm.delete(toDelete) },
+            onExport = { uri ->
+                vm.export(uri) { ok ->
+                    Toast.makeText(
+                        context,
+                        if (ok) "Export saved" else "Export failed",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            },
+            signInIntentProvider = { vm.signInIntent() },
+            onSignInResult = { data -> vm.handleSignInResult(data) },
+            onSignOut = { vm.signOut() },
+        )
+        is Screen.Preview -> {
+            BackHandler { screen = Screen.Home }
+            PreviewScreen(
+                file = s.file,
+                onCrop = { screen = Screen.Crop(s.file) },
+                onSelect = { screen = Screen.Lasso(s.file) },
+            )
+        }
+        is Screen.Crop -> {
+            BackHandler { screen = Screen.Preview(s.file) }
+            CropScreen(
+                file = s.file,
+                onCancel = { screen = Screen.Preview(s.file) },
+                onCropped = { cropped -> screen = Screen.Preview(cropped) },
+            )
+        }
+        is Screen.Lasso -> {
+            BackHandler { screen = Screen.Preview(s.file) }
+            LassoScreen(
+                file = s.file,
+                onCancel = { screen = Screen.Preview(s.file) },
+                onSelected = { screen = Screen.Home },
+            )
+        }
+        is Screen.Detail -> {
+            val clipping = clippings.firstOrNull { it.file.name == s.fileName }
+            // If the clipping vanished (e.g. deleted), fall back to the library.
+            if (clipping == null) {
+                LaunchedEffect(s.fileName) { screen = Screen.Home }
+            } else {
+                val allTags by vm.tags.collectAsState()
+                val assignedTags by remember(s.fileName) { vm.tagsFor(s.fileName) }
+                    .collectAsState(initial = emptyList())
+                val comments by remember(s.fileName) { vm.commentsFor(s.fileName) }
+                    .collectAsState(initial = emptyList())
+                BackHandler { screen = Screen.Home }
+                DetailScreen(
+                    clipping = clipping,
+                    allTags = allTags,
+                    assignedTagIds = assignedTags.map { it.id }.toSet(),
+                    comments = comments,
+                    onBack = { screen = Screen.Home },
+                    onRetry = { vm.retry(clipping.file.name) },
+                    onToggleTag = { tag, assigned -> vm.setTag(s.fileName, tag.id, assigned) },
+                    onCreateTag = { name -> vm.createTag(s.fileName, name) },
+                    onAddComment = { text -> vm.addComment(s.fileName, text) },
+                    onDeleteComment = { id -> vm.deleteComment(id) },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun HomeScreen(
+    clippings: List<Clipping>,
+    userEmail: String?,
+    onTakePhoto: () -> Unit,
+    onOpen: (Clipping) -> Unit,
+    onDelete: (List<File>) -> Unit,
+    onExport: (Uri) -> Unit,
+    signInIntentProvider: () -> Intent?,
+    onSignInResult: (Intent?) -> Unit,
+    onSignOut: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri -> if (uri != null) onExport(uri) }
+    val signInLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result -> onSignInResult(result.data) }
+
+    var selected by remember { mutableStateOf(emptySet<File>()) }
+    val inSelectionMode = selected.isNotEmpty()
+
+    var query by remember { mutableStateOf("") }
+    var sortDescending by remember { mutableStateOf(true) }
+    var showFilter by remember { mutableStateOf(false) }
+
+    // While selecting, Back clears the selection instead of leaving the screen.
+    BackHandler(enabled = inSelectionMode) { selected = emptySet() }
+
+    // Apply the search query (matches summary / extracted text / file name) and the chosen sort.
+    val visible = clippings
+        .filter { c ->
+            val q = query.trim()
+            q.isEmpty() ||
+                c.summary?.contains(q, ignoreCase = true) == true ||
+                c.extractedText?.contains(q, ignoreCase = true) == true ||
+                c.file.name.contains(q, ignoreCase = true)
+        }
+        .sortedBy { it.createdAt }
+        .let { if (sortDescending) it.reversed() else it }
+
+    if (showFilter) {
+        FilterDialog(
+            sortDescending = sortDescending,
+            onApply = { descending ->
+                sortDescending = descending
+                showFilter = false
+            },
+            onDismiss = { showFilter = false },
+        )
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Text(
+                    "Paper Clipper",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(16.dp),
+                )
+                if (userEmail != null) {
+                    Text(
+                        userEmail,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
+                    )
+                }
+                HorizontalDivider()
+                NavigationDrawerItem(
+                    label = { Text(if (userEmail != null) "Log out" else "Log in") },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        if (userEmail != null) {
+                            onSignOut()
+                        } else {
+                            val intent = signInIntentProvider()
+                            if (intent != null) {
+                                signInLauncher.launch(intent)
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    "Sign-in isn't set up yet — add Firebase config.",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+                NavigationDrawerItem(
+                    label = { Text("Export") },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        exportLauncher.launch("paper-clippings.zip")
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+            }
+        },
+    ) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            if (inSelectionMode) {
+                TopAppBar(
+                    title = { Text("${selected.size} selected") },
+                    navigationIcon = {
+                        IconButton(onClick = { selected = emptySet() }) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_close),
+                                contentDescription = "Clear selection",
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                val toDelete = selected.toList()
+                                selected = emptySet()
+                                onDelete(toDelete)
+                            },
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_delete),
+                                contentDescription = "Delete selected",
+                            )
+                        }
+                    },
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_menu),
+                            contentDescription = "Open menu",
+                        )
+                    }
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        placeholder = { Text("Search clippings") },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_search),
+                                contentDescription = null,
+                            )
+                        },
+                        trailingIcon = {
+                            if (query.isNotEmpty()) {
+                                IconButton(onClick = { query = "" }) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_close),
+                                        contentDescription = "Clear search",
+                                    )
+                                }
+                            }
+                        },
+                    )
+                    IconButton(onClick = { showFilter = true }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_filter),
+                            contentDescription = "Filter",
+                        )
+                    }
+                }
+            }
+        },
+        bottomBar = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                Button(
+                    onClick = onTakePhoto,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Take a photo")
+                }
+            }
+        },
+    ) { padding ->
+        if (visible.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (clippings.isEmpty()) {
+                        "No clippings yet — tap Take a photo below."
+                    } else {
+                        "No clippings match your search."
+                    },
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(items = visible, key = { it.file.absolutePath }) { clipping ->
+                    val file = clipping.file
+                    val isSelected = file in selected
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .combinedClickable(
+                                onClick = {
+                                    if (inSelectionMode) {
+                                        selected =
+                                            if (isSelected) selected - file else selected + file
+                                    } else {
+                                        onOpen(clipping)
+                                    }
+                                },
+                                onLongClick = { selected = selected + file },
+                            ),
+                    ) {
+                        AsyncImage(
+                            model = file,
+                            contentDescription = "Saved clipping",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        // Status + summary caption over a bottom scrim.
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .fillMaxWidth()
+                                .background(Color.Black.copy(alpha = 0.45f))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Text(
+                                text = statusLabel(clipping.status),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color.White,
+                            )
+                            val caption = clipping.summary ?: clipping.errorMessage
+                            if (!caption.isNullOrBlank()) {
+                                Text(
+                                    text = caption,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                        if (inSelectionMode) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.35f)),
+                            ) {
+                                Checkbox(checked = isSelected, onCheckedChange = null)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    }
+}
+
+/** Filter sheet: currently a "Sort by" date direction, applied on confirm. */
+@Composable
+private fun FilterDialog(
+    sortDescending: Boolean,
+    onApply: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var descending by remember { mutableStateOf(sortDescending) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Filter") },
+        text = {
+            Column {
+                Text("Sort by", style = MaterialTheme.typography.titleSmall)
+                SortOption("Date — newest first", selected = descending) { descending = true }
+                SortOption("Date — oldest first", selected = !descending) { descending = false }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onApply(descending) }) { Text("Apply") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun SortOption(label: String, selected: Boolean, onSelect: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onSelect)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = onSelect)
+        Text(label, modifier = Modifier.padding(start = 8.dp))
+    }
+}
+
+private fun statusLabel(status: ClippingStatus): String = when (status) {
+    ClippingStatus.PENDING, ClippingStatus.PROCESSING -> "Analyzing…"
+    ClippingStatus.SUCCESS -> "Summary"
+    ClippingStatus.ERROR -> "Analysis failed"
+}
+
+/** Full-screen view of a clipping with its Gemini-extracted text, summary, tags and comments. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DetailScreen(
+    clipping: Clipping,
+    allTags: List<TagEntity>,
+    assignedTagIds: Set<Long>,
+    comments: List<CommentEntity>,
+    onBack: () -> Unit,
+    onRetry: () -> Unit,
+    onToggleTag: (TagEntity, Boolean) -> Unit,
+    onCreateTag: (String) -> Unit,
+    onAddComment: (String) -> Unit,
+    onDeleteComment: (Long) -> Unit,
+) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text("Clipping") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_close),
+                            contentDescription = "Back",
+                        )
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            AsyncImage(
+                model = clipping.file,
+                contentDescription = "Clipping",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(240.dp)
+                    .clip(RoundedCornerShape(8.dp)),
+            )
+
+            when (clipping.status) {
+                ClippingStatus.PENDING, ClippingStatus.PROCESSING -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                        Text("Analyzing with Gemini…", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                ClippingStatus.ERROR -> {
+                    Text("Analysis failed", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = clipping.errorMessage ?: "Unknown error",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Button(onClick = onRetry) { Text("Retry") }
+                }
+                ClippingStatus.SUCCESS -> {
+                    if (!clipping.summary.isNullOrBlank()) {
+                        Text("Summary", style = MaterialTheme.typography.titleMedium)
+                        SelectionContainer {
+                            Text(clipping.summary, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    if (!clipping.extractedText.isNullOrBlank()) {
+                        Text("Extracted text", style = MaterialTheme.typography.titleMedium)
+                        SelectionContainer {
+                            Text(clipping.extractedText, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider()
+            TagsSection(
+                allTags = allTags,
+                assignedTagIds = assignedTagIds,
+                onToggleTag = onToggleTag,
+                onCreateTag = onCreateTag,
+            )
+
+            HorizontalDivider()
+            CommentsSection(
+                comments = comments,
+                onAddComment = onAddComment,
+                onDeleteComment = onDeleteComment,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TagsSection(
+    allTags: List<TagEntity>,
+    assignedTagIds: Set<Long>,
+    onToggleTag: (TagEntity, Boolean) -> Unit,
+    onCreateTag: (String) -> Unit,
+) {
+    var newTag by remember { mutableStateOf("") }
+
+    Text("Tags", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Tags are shared across all clippings — tap to add or remove for this one.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (allTags.isNotEmpty()) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            allTags.forEach { tag ->
+                val selected = tag.id in assignedTagIds
+                FilterChip(
+                    selected = selected,
+                    onClick = { onToggleTag(tag, !selected) },
+                    label = { Text(tag.name) },
+                    leadingIcon = if (selected) {
+                        {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_check),
+                                contentDescription = null,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OutlinedTextField(
+            value = newTag,
+            onValueChange = { newTag = it },
+            modifier = Modifier.weight(1f),
+            singleLine = true,
+            placeholder = { Text("New tag") },
+        )
+        Button(
+            onClick = {
+                onCreateTag(newTag)
+                newTag = ""
+            },
+            enabled = newTag.isNotBlank(),
+        ) { Text("Add") }
+    }
+}
+
+@Composable
+private fun CommentsSection(
+    comments: List<CommentEntity>,
+    onAddComment: (String) -> Unit,
+    onDeleteComment: (Long) -> Unit,
+) {
+    var newComment by remember { mutableStateOf("") }
+
+    Text("Comments", style = MaterialTheme.typography.titleMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = newComment,
+            onValueChange = { newComment = it },
+            modifier = Modifier.weight(1f),
+            placeholder = { Text("Add a comment") },
+        )
+        Button(
+            onClick = {
+                onAddComment(newComment)
+                newComment = ""
+            },
+            enabled = newComment.isNotBlank(),
+        ) { Text("Add") }
+    }
+    comments.forEach { comment ->
+        Row(verticalAlignment = Alignment.Top) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(comment.text, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                        .format(Date(comment.createdAt)),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+            IconButton(onClick = { onDeleteComment(comment.id) }) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_delete),
+                    contentDescription = "Delete comment",
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreviewScreen(
+    file: File,
+    onCrop: () -> Unit,
+    onSelect: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+    ) {
+        AsyncImage(
+            model = file,
+            contentDescription = "Captured clipping",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Button(onClick = onCrop) { Text("Crop") }
+            Button(onClick = onSelect) { Text("Select") }
+        }
+    }
+}
+
+@Composable
+private fun CropScreen(
+    file: File,
+    onCancel: () -> Unit,
+    onCropped: (File) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val state = rememberCropifyState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Button(onClick = onCancel) { Text("Cancel") }
+            Button(onClick = { state.crop() }) { Text("Done") }
+        }
+        // The crop area is given its own region below the buttons and inset from
+        // the screen edges so all four corner handles stay reachable to drag-resize.
+        Cropify(
+            uri = Uri.fromFile(file),
+            state = state,
+            onImageCropped = { cropped: ImageBitmap ->
+                scope.launch {
+                    val out = saveCrop(context, cropped)
+                    file.delete()
+                    onCropped(out)
+                }
+            },
+            onFailedToLoadImage = { onCancel() },
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(24.dp),
+        )
+    }
+}
+
+private suspend fun saveCrop(context: Context, image: ImageBitmap): File =
+    withContext(Dispatchers.IO) {
+        val out = File(clippingsDir(context), "clipping_${System.currentTimeMillis()}.jpg")
+        out.outputStream().use { stream ->
+            image.asAndroidBitmap().compress(Bitmap.CompressFormat.JPEG, 95, stream)
+        }
+        out
+    }
+
+/**
+ * Freeform "lasso" selection. The user drags a closed path over the image; the region
+ * inside the path is kept and everything outside is made transparent. Mirrors [CropScreen]'s
+ * layout (Cancel / Done above an inset image area) so the two flows feel consistent.
+ */
+@Composable
+private fun LassoScreen(
+    file: File,
+    onCancel: () -> Unit,
+    onSelected: (File) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val points = remember { mutableStateListOf<Offset>() }
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+
+    val image by produceState<ImageBitmap?>(initialValue = null, file) {
+        value = withContext(Dispatchers.IO) { decodeSampledBitmap(file, 2048)?.asImageBitmap() }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Button(onClick = onCancel) { Text("Cancel") }
+            Button(
+                onClick = {
+                    val img = image ?: return@Button
+                    if (points.size < 3 || canvasSize == IntSize.Zero) return@Button
+                    scope.launch {
+                        val out = saveLasso(context, img, points.toList(), canvasSize)
+                        if (out != null) {
+                            file.delete()
+                            onSelected(out)
+                        }
+                    }
+                },
+            ) { Text("Done") }
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            val img = image
+            if (img == null) {
+                CircularProgressIndicator(color = Color.White)
+            } else {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .onSizeChanged { canvasSize = it }
+                        .pointerInput(img) {
+                            detectDragGestures(
+                                onDragStart = { start ->
+                                    points.clear()
+                                    points.add(start)
+                                },
+                                onDrag = { change, _ ->
+                                    change.consume()
+                                    points.add(change.position)
+                                },
+                            )
+                        },
+                ) {
+                    val scale = min(size.width / img.width, size.height / img.height)
+                    val drawnW = img.width * scale
+                    val drawnH = img.height * scale
+                    val offX = (size.width - drawnW) / 2f
+                    val offY = (size.height - drawnH) / 2f
+                    drawImage(
+                        image = img,
+                        srcOffset = IntOffset.Zero,
+                        srcSize = IntSize(img.width, img.height),
+                        dstOffset = IntOffset(offX.roundToInt(), offY.roundToInt()),
+                        dstSize = IntSize(drawnW.roundToInt(), drawnH.roundToInt()),
+                    )
+                    if (points.isNotEmpty()) {
+                        val path = Path().apply {
+                            moveTo(points.first().x, points.first().y)
+                            for (i in 1 until points.size) lineTo(points[i].x, points[i].y)
+                            close()
+                        }
+                        drawPath(path = path, color = Color.White.copy(alpha = 0.25f))
+                        drawPath(
+                            path = path,
+                            color = Color.White,
+                            style = Stroke(
+                                width = 3.dp.toPx(),
+                                cap = StrokeCap.Round,
+                                join = StrokeJoin.Round,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Masks [image] to the freeform [canvasPoints] (in canvas pixels) and saves the cropped result as PNG. */
+private suspend fun saveLasso(
+    context: Context,
+    image: ImageBitmap,
+    canvasPoints: List<Offset>,
+    canvasSize: IntSize,
+): File? = withContext(Dispatchers.IO) {
+    val src = image.asAndroidBitmap()
+    val bw = src.width.toFloat()
+    val bh = src.height.toFloat()
+    // Same fit math as the Canvas, to map canvas coordinates back to bitmap pixels.
+    val scale = min(canvasSize.width / bw, canvasSize.height / bh)
+    val offX = (canvasSize.width - bw * scale) / 2f
+    val offY = (canvasSize.height - bh * scale) / 2f
+
+    val path = android.graphics.Path()
+    canvasPoints.forEachIndexed { i, p ->
+        val x = ((p.x - offX) / scale).coerceIn(0f, bw)
+        val y = ((p.y - offY) / scale).coerceIn(0f, bh)
+        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+    }
+    path.close()
+
+    val bounds = RectF()
+    path.computeBounds(bounds, true)
+    val left = bounds.left.toInt().coerceIn(0, src.width)
+    val top = bounds.top.toInt().coerceIn(0, src.height)
+    val width = bounds.width().roundToInt().coerceIn(1, src.width - left)
+    val height = bounds.height().roundToInt().coerceIn(1, src.height - top)
+
+    val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    android.graphics.Canvas(out).apply {
+        translate(-left.toFloat(), -top.toFloat())
+        clipPath(path)
+        drawBitmap(src, 0f, 0f, null)
+    }
+
+    val file = File(clippingsDir(context), "clipping_${System.currentTimeMillis()}.png")
+    file.outputStream().use { out.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    file
+}
+
+/** Decodes [file] downsampled so its longest edge is at most [maxDim] px, to bound memory. */
+private fun decodeSampledBitmap(file: File, maxDim: Int): Bitmap? {
+    val probe = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(file.absolutePath, probe)
+    var sample = 1
+    val longest = maxOf(probe.outWidth, probe.outHeight)
+    while (longest / sample > maxDim) sample *= 2
+    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+    val bitmap = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return null
+    // BitmapFactory ignores the JPEG EXIF orientation tag (Coil applies it on the Preview screen),
+    // so apply it here too — otherwise camera photos appear rotated/flipped in the lasso screen.
+    return applyExifOrientation(file, bitmap)
+}
+
+private fun applyExifOrientation(file: File, bitmap: Bitmap): Bitmap {
+    val orientation = runCatching {
+        ExifInterface(file.absolutePath).getAttributeInt(
+            ExifInterface.TAG_ORIENTATION,
+            ExifInterface.ORIENTATION_NORMAL,
+        )
+    }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+
+    val matrix = Matrix()
+    when (orientation) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+        ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+        ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+        ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+        ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.postRotate(90f); matrix.postScale(-1f, 1f) }
+        ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.postScale(-1f, 1f) }
+        else -> return bitmap
+    }
+    return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+}
+
+private fun newClippingTarget(context: Context): Pair<File, Uri> {
+    val file = File(clippingsDir(context), "clipping_${System.currentTimeMillis()}.jpg")
+    val uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        file,
+    )
+    return file to uri
+}

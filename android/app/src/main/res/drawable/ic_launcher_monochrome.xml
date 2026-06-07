@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Clipping outline + text lines + a sparkle, as a single-tone themed icon. -->
+    <group android:name="clipping" android:pivotX="54" android:pivotY="54" android:rotation="-6">
+        <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.6" android:fillColor="#00000000"
+            android:pathData="M30,30 L78,30 L78,74 L30,74 Z" />
+        <path android:fillColor="#FFFFFFFF"
+            android:pathData="M35,37 L73,37 L73,41 L35,41 Z M35,47 L73,47 L73,49 L35,49 Z M35,53 L73,53 L73,55 L35,55 Z M35,59 L63,59 L63,61 L35,61 Z" />
+    </group>
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M72,16 L75.5,23.5 L83,27 L75.5,30.5 L72,38 L68.5,30.5 L61,27 L68.5,23.5 Z" />
+</vector>

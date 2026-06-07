@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Scrapbook page: a deep indigo->blue gradient for an "AI" feel. -->
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0" android:startY="0"
+                android:endX="108" android:endY="108"
+                android:startColor="#FF3A2E78"
+                android:endColor="#FF1F3B8A" />
+        </aapt:attr>
+    </path>
+    <!-- Faint corner glow to add depth. -->
+    <path android:pathData="M108,0L108,108L40,108z" android:fillColor="#142FA0FF" />
+</vector>

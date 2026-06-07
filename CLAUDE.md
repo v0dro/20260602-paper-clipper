@@ -1,6 +1,14 @@
 # Paper Clipper
 
-An Android app for capturing newspaper clippings with the camera and saving them locally for later use.
+An app for capturing newspaper clippings with the camera, analyzing them with AI, and saving them locally. This is a **monorepo** with three sub-projects:
+
+| Folder | What | Docs |
+|---|---|---|
+| `android/` | The Android app (Kotlin + Jetpack Compose). The Gradle root — run all `./gradlew` commands from here. | this file |
+| `server/` | Python FastAPI proxy that holds the Gemini key and is exposed via a Cloudflare tunnel. | `server/README.md` |
+| `ios/` | The iOS app (SwiftUI, iOS 17+, SwiftData), mirroring Android and using the same backends. **Cannot be built on this Linux machine — build in Xcode on a Mac.** | `ios/README.md`, `ios/ANDROID_TO_IOS.md` |
+
+The rest of this file documents the **Android** sub-project.
 
 ## Toolchain
 
@@ -28,6 +36,8 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator
 ```
 
 ## Common commands
+
+All Gradle commands run from the `android/` folder (`cd android` first):
 
 | Goal | Command |
 |---|---|
@@ -71,12 +81,15 @@ There are no AVDs yet. Create one via **Android Studio → Tools → Device Mana
 ## Project layout
 
 ```
-.
+.                                        # repo root
 ├── CLAUDE.md
+├── server/                              # Python AI proxy (see server/README.md)
+├── ios/                                 # iOS app (see ios/README.md)
+└── android/                             # Android app — Gradle root (run ./gradlew here)
 ├── build.gradle.kts                     # root: plugins apply false
 ├── settings.gradle.kts                  # rootProject.name = "paper-clipper"
 ├── gradle.properties                    # org.gradle.java.home → JBR
-├── local.properties                     # sdk.dir → SDK (gitignored)
+├── local.properties                     # sdk.dir, SERVER_URL, PROXY_TOKEN (gitignored)
 ├── gradle/
 │   ├── libs.versions.toml               # source of truth for all deps + versions
 │   └── wrapper/                         # gradle-wrapper.jar + .properties

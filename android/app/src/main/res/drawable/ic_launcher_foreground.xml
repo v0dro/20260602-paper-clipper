@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+
+    <!-- The newspaper clipping, tilted like it's pasted into a scrapbook. -->
+    <group android:name="clipping" android:pivotX="54" android:pivotY="54" android:rotation="-6">
+
+        <!-- Drop shadow under the clipping. -->
+        <path android:fillColor="#33000000"
+            android:pathData="M31,31 L81,31 L81,72 L31,72 Z" />
+
+        <!-- Cream paper with a torn bottom edge. -->
+        <path android:fillColor="#FFFBF3E0"
+            android:pathData="M29,29 L79,29 L79,69 L75,73 L71,69 L67,73 L63,69 L59,73 L55,69 L51,73 L47,69 L43,73 L39,69 L35,73 L31,69 L29,71 Z" />
+
+        <!-- Masthead (newspaper title bar) + rule line. -->
+        <path android:fillColor="#FF2B2A4D"
+            android:pathData="M33,33 L75,33 L75,40 L33,40 Z" />
+        <path android:fillColor="#FF8A8AA0"
+            android:pathData="M33,42 L75,42 L75,43 L33,43 Z" />
+
+        <!-- Photo box. -->
+        <path android:fillColor="#FF8FA3B8"
+            android:pathData="M33,46 L49,46 L49,60 L33,60 Z" />
+
+        <!-- Column text beside and below the photo. -->
+        <path android:fillColor="#FF6E6E7A"
+            android:pathData="M52,47 L75,47 L75,49 L52,49 Z M52,52 L75,52 L75,54 L52,54 Z M52,57 L73,57 L73,59 L52,59 Z M33,63 L75,63 L75,65 L33,65 Z M33,66 L69,66 L69,67 L33,67 Z" />
+    </group>
+
+    <!-- AI sparkles (four-point stars) with a blue->violet gradient. -->
+    <path
+        android:pathData="M70,18 L73.2,24.8 L80,28 L73.2,31.2 L70,38 L66.8,31.2 L60,28 L66.8,24.8 Z M81,38 L82.6,41.4 L86,43 L82.6,44.6 L81,48 L79.4,44.6 L76,43 L79.4,41.4 Z M84,30 L85,31.6 L86.6,32.6 L85,33.6 L84,35.2 L83,33.6 L81.4,32.6 L83,31.6 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="60" android:startY="18"
+                android:endX="86" android:endY="48"
+                android:startColor="#FF7CC0FF"
+                android:endColor="#FFC09BFF" />
+        </aapt:attr>
+    </path>
+</vector>

@@ -1,0 +1,11 @@
+// Copy to Config.xcconfig (gitignored) and fill in. These MUST match the proxy server (server/.env):
+// the same SERVER_URL host and the same PROXY_TOKEN.
+//
+// NOTE the xcconfig "//" gotcha: a literal "//" starts a comment, so the URL's "//" is escaped
+// with $() below. The runtime value resolves to https://clipper.yourdomain.com correctly.
+SERVER_URL = https:/$()/clipper.yourdomain.com
+PROXY_TOKEN = your-proxy-token-here
+
+// From GoogleService-Info.plist (the REVERSED_CLIENT_ID value) once Firebase is set up.
+// Leave blank until then — sign-in stays inert (mirrors the Android scaffold).
+REVERSED_CLIENT_ID =

@@ -1,0 +1,64 @@
+package com.example.paperclipper.auth
+
+import android.content.Context
+import android.content.Intent
+import com.example.paperclipper.R
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
+/**
+ * Firebase + Google Sign-In wrapper.
+ *
+ * SCAFFOLD: fully wired, but inert until Firebase is configured. Sign-in is "configured" only when
+ * [R.string.firebase_web_client_id] is set AND a default FirebaseApp exists (i.e. the
+ * `com.google.gms.google-services` plugin + google-services.json have been added). Every Firebase
+ * call is guarded so the app never crashes while unconfigured.
+ */
+class AuthManager(private val context: Context) {
+
+    private val _email = MutableStateFlow(currentEmailOrNull())
+    val email: StateFlow<String?> = _email
+
+    private fun auth(): FirebaseAuth? = runCatching { FirebaseAuth.getInstance() }.getOrNull()
+
+    private fun webClientId(): String = context.getString(R.string.firebase_web_client_id)
+
+    fun isConfigured(): Boolean = webClientId().isNotBlank() && auth() != null
+
+    private fun currentEmailOrNull(): String? = auth()?.currentUser?.email
+
+    private fun client(): GoogleSignInClient {
+        val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(webClientId())
+            .requestEmail()
+            .build()
+        return GoogleSignIn.getClient(context, options)
+    }
+
+    /** Intent to start the Google chooser, or null if sign-in isn't configured yet. */
+    fun signInIntent(): Intent? = if (isConfigured()) client().signInIntent else null
+
+    /** Completes sign-in from the chooser result by exchanging the Google id token with Firebase. */
+    fun handleSignInResult(data: Intent?) {
+        val account = runCatching {
+            GoogleSignIn.getSignedInAccountFromIntent(data).getResult(ApiException::class.java)
+        }.getOrNull() ?: return
+        val idToken = account.idToken ?: return
+        val credential = GoogleAuthProvider.getCredential(idToken, null)
+        auth()?.signInWithCredential(credential)?.addOnCompleteListener { task ->
+            if (task.isSuccessful) _email.value = auth()?.currentUser?.email
+        }
+    }
+
+    fun signOut() {
+        runCatching { auth()?.signOut() }
+        runCatching { client().signOut() }
+        _email.value = null
+    }
+}
