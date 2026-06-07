@@ -24,16 +24,20 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -85,6 +89,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -92,6 +97,10 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -134,6 +143,7 @@ private sealed interface Screen {
     data class Crop(val file: File) : Screen
     data class Lasso(val file: File) : Screen
     data class Detail(val fileName: String) : Screen
+    data class Viewer(val file: File) : Screen
 }
 
 @Composable
@@ -142,6 +152,16 @@ fun ClipperApp() {
     val vm: ClippingsViewModel = viewModel()
     val clippings by vm.clippings.collectAsState()
     val userEmail by vm.authEmail.collectAsState()
+    val userName by vm.authName.collectAsState()
+    val authError by vm.authError.collectAsState()
+
+    // Surface sign-in failures (otherwise they're invisible).
+    LaunchedEffect(authError) {
+        authError?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            vm.clearAuthError()
+        }
+    }
     var pendingFile by remember { mutableStateOf<File?>(null) }
     var screen: Screen by remember { mutableStateOf(Screen.Home) }
 
@@ -177,6 +197,7 @@ fun ClipperApp() {
         Screen.Home -> HomeScreen(
             clippings = clippings,
             userEmail = userEmail,
+            userName = userName,
             onTakePhoto = {
                 val granted = ContextCompat.checkSelfPermission(
                     context,
@@ -199,6 +220,7 @@ fun ClipperApp() {
             signInIntentProvider = { vm.signInIntent() },
             onSignInResult = { data -> vm.handleSignInResult(data) },
             onSignOut = { vm.signOut() },
+            onClearAll = { vm.clearAll() },
         )
         is Screen.Preview -> {
             BackHandler { screen = Screen.Home }
@@ -247,8 +269,13 @@ fun ClipperApp() {
                     onCreateTag = { name -> vm.createTag(s.fileName, name) },
                     onAddComment = { text -> vm.addComment(s.fileName, text) },
                     onDeleteComment = { id -> vm.deleteComment(id) },
+                    onOpenImage = { screen = Screen.Viewer(clipping.file) },
                 )
             }
+        }
+        is Screen.Viewer -> {
+            BackHandler { screen = Screen.Detail(s.file.name) }
+            ImageViewerScreen(file = s.file, onBack = { screen = Screen.Detail(s.file.name) })
         }
     }
 }
@@ -258,6 +285,7 @@ fun ClipperApp() {
 private fun HomeScreen(
     clippings: List<Clipping>,
     userEmail: String?,
+    userName: String?,
     onTakePhoto: () -> Unit,
     onOpen: (Clipping) -> Unit,
     onDelete: (List<File>) -> Unit,
@@ -265,6 +293,7 @@ private fun HomeScreen(
     signInIntentProvider: () -> Intent?,
     onSignInResult: (Intent?) -> Unit,
     onSignOut: () -> Unit,
+    onClearAll: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -282,6 +311,7 @@ private fun HomeScreen(
     var query by remember { mutableStateOf("") }
     var sortDescending by remember { mutableStateOf(true) }
     var showFilter by remember { mutableStateOf(false) }
+    var showClearConfirm by remember { mutableStateOf(false) }
 
     // While selecting, Back clears the selection instead of leaving the screen.
     BackHandler(enabled = inSelectionMode) { selected = emptySet() }
@@ -309,6 +339,24 @@ private fun HomeScreen(
         )
     }
 
+    if (showClearConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            title = { Text("Clear all data?") },
+            text = {
+                Text("This permanently deletes every clipping, tag and comment from this device. This can't be undone.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showClearConfirm = false
+                    selected = emptySet()
+                    onClearAll()
+                }) { Text("Delete everything") }
+            },
+            dismissButton = { TextButton(onClick = { showClearConfirm = false }) { Text("Cancel") } },
+        )
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -320,20 +368,19 @@ private fun HomeScreen(
                 )
                 if (userEmail != null) {
                     Text(
-                        userEmail,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
+                        "Logged in as ${userName ?: userEmail}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(start = 16.dp, bottom = 12.dp),
                     )
                 }
                 HorizontalDivider()
-                NavigationDrawerItem(
-                    label = { Text(if (userEmail != null) "Log out" else "Log in") },
-                    selected = false,
-                    onClick = {
-                        scope.launch { drawerState.close() }
-                        if (userEmail != null) {
-                            onSignOut()
-                        } else {
+
+                if (userEmail == null) {
+                    NavigationDrawerItem(
+                        label = { Text("Log in") },
+                        selected = false,
+                        onClick = {
+                            scope.launch { drawerState.close() }
                             val intent = signInIntentProvider()
                             if (intent != null) {
                                 signInLauncher.launch(intent)
@@ -344,10 +391,10 @@ private fun HomeScreen(
                                     Toast.LENGTH_LONG,
                                 ).show()
                             }
-                        }
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                )
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
                 NavigationDrawerItem(
                     label = { Text("Export") },
                     selected = false,
@@ -357,6 +404,31 @@ private fun HomeScreen(
                     },
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 )
+                NavigationDrawerItem(
+                    label = { Text("Clear all", color = MaterialTheme.colorScheme.error) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        showClearConfirm = true
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+
+                Spacer(Modifier.weight(1f))
+
+                // Log out pinned to the very bottom of the panel (only when logged in).
+                if (userEmail != null) {
+                    HorizontalDivider()
+                    NavigationDrawerItem(
+                        label = { Text("Log out") },
+                        selected = false,
+                        onClick = {
+                            scope.launch { drawerState.close() }
+                            onSignOut()
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
             }
         },
     ) {
@@ -503,7 +575,15 @@ private fun HomeScreen(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
                         )
-                        // Status + summary caption over a bottom scrim.
+                        // Caption over a bottom scrim. While searching, show the matching excerpt
+                        // with the query highlighted (Preview-style); otherwise status + summary.
+                        val q = query.trim()
+                        val matchField = if (q.isEmpty()) {
+                            null
+                        } else {
+                            clipping.extractedText?.takeIf { it.contains(q, ignoreCase = true) }
+                                ?: clipping.summary?.takeIf { it.contains(q, ignoreCase = true) }
+                        }
                         Column(
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
@@ -511,20 +591,35 @@ private fun HomeScreen(
                                 .background(Color.Black.copy(alpha = 0.45f))
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                         ) {
-                            Text(
-                                text = statusLabel(clipping.status),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Color.White,
-                            )
-                            val caption = clipping.summary ?: clipping.errorMessage
-                            if (!caption.isNullOrBlank()) {
+                            if (matchField != null) {
                                 Text(
-                                    text = caption,
+                                    text = "Match",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Color(0xFFFFE082),
+                                )
+                                Text(
+                                    text = searchSnippet(matchField, q),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color.White,
-                                    maxLines = 2,
+                                    maxLines = 3,
                                     overflow = TextOverflow.Ellipsis,
                                 )
+                            } else {
+                                Text(
+                                    text = statusLabel(clipping.status),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Color.White,
+                                )
+                                val caption = clipping.summary ?: clipping.errorMessage
+                                if (!caption.isNullOrBlank()) {
+                                    Text(
+                                        text = caption,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
                         }
                         if (inSelectionMode) {
@@ -583,6 +678,100 @@ private fun SortOption(label: String, selected: Boolean, onSelect: () -> Unit) {
     }
 }
 
+/**
+ * Builds a short excerpt of [source] centered on the first occurrence of [query], with every
+ * occurrence of the query highlighted (bold + amber) — like the macOS Preview search results.
+ */
+private fun searchSnippet(source: String, query: String): AnnotatedString {
+    val radius = 60
+    val first = source.indexOf(query, ignoreCase = true).coerceAtLeast(0)
+    val start = (first - radius).coerceAtLeast(0)
+    val end = (first + query.length + radius).coerceAtMost(source.length)
+    val prefix = if (start > 0) "…" else ""
+    val suffix = if (end < source.length) "…" else ""
+    val window = prefix + source.substring(start, end).replace('\n', ' ').trim() + suffix
+
+    return buildAnnotatedString {
+        append(window)
+        var i = window.indexOf(query, ignoreCase = true)
+        while (i >= 0) {
+            addStyle(
+                SpanStyle(fontWeight = FontWeight.Bold, color = Color(0xFFFFE082)),
+                i,
+                i + query.length,
+            )
+            i = window.indexOf(query, startIndex = i + query.length, ignoreCase = true)
+        }
+    }
+}
+
+/** Full-screen image viewer with pinch-to-zoom, pan (clamped to bounds), and double-tap to zoom. */
+@Composable
+private fun ImageViewerScreen(file: File, onBack: () -> Unit) {
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+    ) {
+        val maxW = constraints.maxWidth.toFloat()
+        val maxH = constraints.maxHeight.toFloat()
+        AsyncImage(
+            model = file,
+            contentDescription = "Full clipping",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                }
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        val newScale = (scale * zoom).coerceIn(1f, 5f)
+                        val maxX = maxW * (newScale - 1f) / 2f
+                        val maxY = maxH * (newScale - 1f) / 2f
+                        val next = if (newScale > 1f) offset + pan else Offset.Zero
+                        scale = newScale
+                        offset = Offset(
+                            next.x.coerceIn(-maxX, maxX),
+                            next.y.coerceIn(-maxY, maxY),
+                        )
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            if (scale > 1f) {
+                                scale = 1f
+                                offset = Offset.Zero
+                            } else {
+                                scale = 2.5f
+                            }
+                        },
+                    )
+                },
+        )
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(8.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_close),
+                contentDescription = "Close",
+                tint = Color.White,
+            )
+        }
+    }
+}
+
 private fun statusLabel(status: ClippingStatus): String = when (status) {
     ClippingStatus.PENDING, ClippingStatus.PROCESSING -> "Analyzing…"
     ClippingStatus.SUCCESS -> "Summary"
@@ -603,6 +792,7 @@ private fun DetailScreen(
     onCreateTag: (String) -> Unit,
     onAddComment: (String) -> Unit,
     onDeleteComment: (Long) -> Unit,
+    onOpenImage: () -> Unit,
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -630,12 +820,18 @@ private fun DetailScreen(
         ) {
             AsyncImage(
                 model = clipping.file,
-                contentDescription = "Clipping",
+                contentDescription = "Clipping (tap to zoom)",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(240.dp)
-                    .clip(RoundedCornerShape(8.dp)),
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onOpenImage),
+            )
+            Text(
+                "Tap the image to view full screen and zoom",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             when (clipping.status) {

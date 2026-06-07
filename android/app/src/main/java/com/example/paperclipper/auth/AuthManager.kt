@@ -2,6 +2,7 @@ package com.example.paperclipper.auth
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import com.example.paperclipper.R
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
@@ -25,6 +26,15 @@ class AuthManager(private val context: Context) {
     private val _email = MutableStateFlow(currentEmailOrNull())
     val email: StateFlow<String?> = _email
 
+    private val _displayName = MutableStateFlow(currentNameOrNull())
+    val displayName: StateFlow<String?> = _displayName
+
+    /** Last sign-in error message (for surfacing to the user); null when none. */
+    private val _signInError = MutableStateFlow<String?>(null)
+    val signInError: StateFlow<String?> = _signInError
+
+    fun clearSignInError() { _signInError.value = null }
+
     private fun auth(): FirebaseAuth? = runCatching { FirebaseAuth.getInstance() }.getOrNull()
 
     private fun webClientId(): String {
@@ -41,6 +51,7 @@ class AuthManager(private val context: Context) {
     fun isConfigured(): Boolean = webClientId().isNotBlank() && auth() != null
 
     private fun currentEmailOrNull(): String? = auth()?.currentUser?.email
+    private fun currentNameOrNull(): String? = auth()?.currentUser?.displayName
 
     private fun client(): GoogleSignInClient {
         val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -51,23 +62,49 @@ class AuthManager(private val context: Context) {
     }
 
     /** Intent to start the Google chooser, or null if sign-in isn't configured yet. */
-    fun signInIntent(): Intent? = if (isConfigured()) client().signInIntent else null
+    fun signInIntent(): Intent? {
+        if (!isConfigured()) {
+            Log.w(TAG, "signInIntent: not configured (firebaseApp=${auth() != null}, webClientIdBlank=${webClientId().isBlank()})")
+            return null
+        }
+        return client().signInIntent
+    }
 
     /** Completes sign-in from the chooser result by exchanging the Google id token with Firebase. */
     fun handleSignInResult(data: Intent?) {
-        val account = runCatching {
+        _signInError.value = null
+        val account = try {
             GoogleSignIn.getSignedInAccountFromIntent(data).getResult(ApiException::class.java)
-        }.getOrNull() ?: return
-        val idToken = account.idToken ?: return
+        } catch (e: ApiException) {
+            Log.w(TAG, "Google sign-in failed: statusCode=${e.statusCode} (${e.message})")
+            _signInError.value = "Google sign-in failed (code ${e.statusCode})"
+            return
+        }
+        val idToken = account.idToken
+        if (idToken == null) {
+            Log.w(TAG, "Google account has no id token (web client id misconfigured?)")
+            _signInError.value = "No ID token from Google (check web client id)"
+            return
+        }
         val credential = GoogleAuthProvider.getCredential(idToken, null)
         auth()?.signInWithCredential(credential)?.addOnCompleteListener { task ->
-            if (task.isSuccessful) _email.value = auth()?.currentUser?.email
+            if (task.isSuccessful) {
+                _email.value = auth()?.currentUser?.email
+                _displayName.value = auth()?.currentUser?.displayName
+                Log.i(TAG, "Firebase sign-in OK: ${_email.value}")
+            } else {
+                Log.w(TAG, "Firebase signInWithCredential failed", task.exception)
+                _signInError.value = "Firebase sign-in failed: ${task.exception?.message}"
+            }
         }
     }
+
+    private companion object { const val TAG = "PaperAuth" }
 
     fun signOut() {
         runCatching { auth()?.signOut() }
         runCatching { client().signOut() }
         _email.value = null
+        _displayName.value = null
     }
 }

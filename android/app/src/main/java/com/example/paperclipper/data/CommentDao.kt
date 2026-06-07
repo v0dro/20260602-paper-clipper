@@ -21,4 +21,7 @@ interface CommentDao {
 
     @Query("DELETE FROM comments WHERE fileName IN (:fileNames)")
     suspend fun deleteForFiles(fileNames: List<String>)
+
+    @Query("DELETE FROM comments")
+    suspend fun deleteAll()
 }

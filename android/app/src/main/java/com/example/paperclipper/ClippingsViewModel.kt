@@ -27,6 +27,9 @@ class ClippingsViewModel(app: Application) : AndroidViewModel(app) {
     /** Email of the signed-in user, or null when logged out / not configured. */
     val authEmail: StateFlow<String?> = authManager.email
 
+    /** Display name of the signed-in user (may be null even when signed in). */
+    val authName: StateFlow<String?> = authManager.displayName
+
     val clippings: StateFlow<List<Clipping>> =
         repository.clippings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -45,6 +48,11 @@ class ClippingsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun delete(files: List<File>) {
         viewModelScope.launch { repository.delete(files) }
+    }
+
+    /** Deletes ALL user data (clippings, tags, comments + image files). */
+    fun clearAll() {
+        viewModelScope.launch { repository.clearAll() }
     }
 
     fun retry(fileName: String) {
@@ -81,7 +89,9 @@ class ClippingsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // --- Auth (scaffold; inert until Firebase is configured) ---
+    // --- Auth ---
+    val authError: StateFlow<String?> = authManager.signInError
+    fun clearAuthError() = authManager.clearSignInError()
     fun signInIntent(): Intent? = authManager.signInIntent()
     fun handleSignInResult(data: Intent?) = authManager.handleSignInResult(data)
     fun signOut() = authManager.signOut()

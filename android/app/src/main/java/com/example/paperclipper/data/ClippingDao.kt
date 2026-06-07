@@ -43,4 +43,7 @@ interface ClippingDao {
 
     @Query("DELETE FROM clippings WHERE fileName IN (:fileNames)")
     suspend fun deleteByNames(fileNames: List<String>)
+
+    @Query("DELETE FROM clippings")
+    suspend fun deleteAll()
 }

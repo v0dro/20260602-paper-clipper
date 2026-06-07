@@ -119,6 +119,15 @@ class ClippingsRepository(
         commentDao.deleteForFiles(names)
     }
 
+    /** Wipes ALL user data: every clipping image on disk plus all clippings, tags and comments. */
+    suspend fun clearAll() = withContext(Dispatchers.IO) {
+        listClippingFiles(context).forEach { it.delete() }
+        commentDao.deleteAll()
+        tagDao.deleteAllRefs()
+        tagDao.deleteAllTags()
+        dao.deleteAll()
+    }
+
     /**
      * Writes a user-readable ZIP to [out]: every clipping image under images/, a structured
      * metadata.json, and an index.html gallery that shows each image with its text/summary/

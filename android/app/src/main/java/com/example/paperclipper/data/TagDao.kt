@@ -37,4 +37,10 @@ interface TagDao {
 
     @Query("DELETE FROM clipping_tags WHERE fileName IN (:fileNames)")
     suspend fun deleteRefsForFiles(fileNames: List<String>)
+
+    @Query("DELETE FROM clipping_tags")
+    suspend fun deleteAllRefs()
+
+    @Query("DELETE FROM tags")
+    suspend fun deleteAllTags()
 }

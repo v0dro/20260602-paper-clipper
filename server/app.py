@@ -12,6 +12,11 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
+import time
+from email.message import EmailMessage
+from email.utils import formatdate
+from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
@@ -24,6 +29,10 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 PROXY_TOKEN = os.getenv("PROXY_TOKEN", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+
+# Feedback is saved as .eml files in a local folder on this machine (no external email sent).
+FEEDBACK_DIR = Path(os.getenv("FEEDBACK_DIR", "feedback")).expanduser()
+FEEDBACK_TO = os.getenv("FEEDBACK_TO", "developer").strip()
 
 GEMINI_ENDPOINT = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
@@ -49,6 +58,39 @@ class AnalyzeRequest(BaseModel):
 class AnalyzeResponse(BaseModel):
     extractedText: str
     summary: str
+
+
+class FeedbackRequest(BaseModel):
+    message: str
+    email: str | None = None
+    appVersion: str | None = None
+
+
+@app.post("/feedback")
+async def feedback(req: FeedbackRequest, authorization: str | None = Header(default=None)):
+    if not PROXY_TOKEN or authorization != f"Bearer {PROXY_TOKEN}":
+        raise HTTPException(status_code=401, detail="Invalid or missing token")
+    message = req.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is empty")
+
+    # Compose an RFC-822 mail and save it to the local feedback folder (no external send).
+    mail = EmailMessage()
+    mail["To"] = FEEDBACK_TO
+    mail["From"] = req.email or "paper-clipper-app"
+    mail["Subject"] = "Paper Clipper feedback"
+    mail["Date"] = formatdate(localtime=True)
+    if req.appVersion:
+        mail["X-App-Version"] = req.appVersion
+    mail.set_content(message)
+
+    FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    safe = re.sub(r"[^a-zA-Z0-9@._-]", "_", (req.email or "anon"))[:40]
+    path = FEEDBACK_DIR / f"feedback_{stamp}_{safe}.eml"
+    path.write_bytes(bytes(mail))
+    print(f"[feedback] saved {path}", flush=True)
+    return {"status": "saved"}
 
 
 @app.get("/health")
@@ -83,33 +125,50 @@ async def analyze(req: AnalyzeRequest, authorization: str | None = Header(defaul
                 ]
             }
         ],
-        "generationConfig": {"responseMimeType": "application/json"},
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            # gemini-2.5-flash is a "thinking" model; for transcription we don't need it, and leaving
+            # it on occasionally consumes the token budget and returns empty/truncated JSON -> 502.
+            "thinkingConfig": {"thinkingBudget": 0},
+            "maxOutputTokens": 4096,
+        },
     }
 
-    # --- call Gemini ---
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                GEMINI_ENDPOINT,
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": GEMINI_API_KEY,
-                },
-                json=body,
-            )
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"Could not reach Gemini: {exc}")
+    # --- call Gemini, retrying transient failures (5xx / 429 / empty responses) ---
+    last_error = "Gemini request failed"
+    for attempt in range(1, 4):
+        try:
+            async with httpx.AsyncClient(timeout=90.0) as client:
+                resp = await client.post(
+                    GEMINI_ENDPOINT,
+                    headers={
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": GEMINI_API_KEY,
+                    },
+                    json=body,
+                )
+        except httpx.HTTPError as exc:
+            last_error = f"Could not reach Gemini: {exc}"
+            print(f"[analyze] attempt {attempt}: network error: {exc}", flush=True)
+            continue
 
-    if resp.status_code // 100 != 2:
-        message = _gemini_error(resp.text, resp.status_code)
-        raise HTTPException(status_code=502, detail=message)
+        if resp.status_code // 100 != 2:
+            last_error = _gemini_error(resp.text, resp.status_code)
+            print(f"[analyze] attempt {attempt}: HTTP {resp.status_code}: {resp.text[:300]}", flush=True)
+            # Don't retry hard client errors (bad key / forbidden / bad request).
+            if resp.status_code in (400, 401, 403):
+                break
+            continue
 
-    extracted, summary = _parse_gemini(resp.text)
-    if extracted is None:
-        raise HTTPException(status_code=502, detail="Unexpected response from Gemini")
-    if not extracted and not summary:
-        raise HTTPException(status_code=502, detail="Gemini returned no text")
-    return AnalyzeResponse(extractedText=extracted, summary=summary)
+        extracted, summary = _parse_gemini(resp.text)
+        if extracted is None or (not extracted and not summary):
+            last_error = "Gemini returned no usable text"
+            print(f"[analyze] attempt {attempt}: empty/unparseable: {resp.text[:300]}", flush=True)
+            continue
+
+        return AnalyzeResponse(extractedText=extracted, summary=summary)
+
+    raise HTTPException(status_code=502, detail=last_error)
 
 
 def _parse_gemini(raw: str) -> tuple[str | None, str]:
