@@ -84,6 +84,22 @@ PROXY_TOKEN=<same token as server/.env>
 Rebuild/install the app. Remove `GEMINI_API_KEY` from `local.properties` — the key now lives only
 in `server/.env`.
 
+## Request log
+
+Every request is recorded — one row per request — in a `request_log` table inside the same SQLite
+file as the usage counters (`USAGE_DB`, default `usage.db`, gitignored). Each row holds the time,
+endpoint, **user id** (`X-User-Id`), caller IP (from the Cloudflare forwarded headers), HTTP status,
+outcome, latency, request size, and — for `/analyze` — the **AI response** (`extracted_text`,
+`summary`); for `/feedback` the message, email and app version; plus any error. The console
+(journald) gets only a concise one-liner (`[req] …`); the full detail (incl. AI output / email)
+stays in the local DB.
+
+Inspect it with:
+```bash
+sqlite3 usage.db "SELECT ts, endpoint, user_id, status, outcome, latency_ms FROM request_log ORDER BY id DESC LIMIT 20;"
+sqlite3 usage.db "SELECT ts, user_id, substr(summary,1,80) FROM request_log WHERE endpoint='analyze' AND outcome='success' ORDER BY id DESC LIMIT 10;"
+```
+
 ## Security note
 
 The Gemini key is no longer in the APK (the goal). `PROXY_TOKEN` *is* still embedded in the app and

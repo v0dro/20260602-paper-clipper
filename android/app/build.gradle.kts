@@ -25,6 +25,14 @@ val localProps = Properties().apply {
 val serverUrl: String = localProps.getProperty("SERVER_URL", "")
 val proxyToken: String = localProps.getProperty("PROXY_TOKEN", "")
 
+// Release signing is read from the gitignored keystore.properties (storeFile, storePassword,
+// keyAlias, keyPassword). When the file is absent (CI, fresh checkout) the release build stays
+// unsigned rather than failing, so only machines holding the keystore produce upload artifacts.
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.example.paperclipper"
     compileSdk = 35
@@ -34,16 +42,30 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
         buildConfigField("String", "PROXY_TOKEN", "\"$proxyToken\"")
+    }
+
+    signingConfigs {
+        create("release") {
+            keystoreProps.getProperty("storeFile")?.let {
+                storeFile = file(it)
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            if (keystoreProps.getProperty("storeFile") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -73,12 +95,10 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
-    implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.coil.compose)
     implementation(libs.cropify)
@@ -98,7 +118,6 @@ dependencies {
     implementation(libs.firebase.auth)
     implementation(libs.play.services.auth)
 
-    debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
     // JVM unit tests run on Robolectric so they can touch the Android framework (Context, org.json,
@@ -113,7 +132,6 @@ dependencies {
     // Compose AnnotatedString etc. are already on the main classpath; ui-test is for androidTest only.
 
     androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
 }
