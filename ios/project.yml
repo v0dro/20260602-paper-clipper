@@ -7,10 +7,10 @@ options:
 packages:
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
-    minVersion: 11.0.0
+    from: 11.0.0
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
-    minVersion: 8.0.0
+    from: 8.0.0
 
 targets:
   PaperClipper:

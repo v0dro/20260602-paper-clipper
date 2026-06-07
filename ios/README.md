@@ -3,13 +3,15 @@
 SwiftUI app (iOS 17+, SwiftData) that mirrors the Android app and talks to the **same backends**:
 the proxy `/analyze` server (`../server`) and the same Firebase project for auth.
 
-> ⚠️ This was authored on a Linux machine with no Xcode, so it has **not been compiled**. Expect to
-> fix a few minor things in Xcode. The architecture and the backend-facing layers are complete; some
-> screens are stubs (see `ANDROID_TO_IOS.md`).
+> ✅ Builds and runs. Verified with Xcode 26.2 (iOS 26 SDK): `xcodegen generate` →
+> `xcodebuild` **BUILD SUCCEEDED** with the full Firebase/GoogleSignIn package graph, and the app
+> launches in the simulator — the capture → save → reconcile → list → analyze pipeline works
+> end-to-end (the network call hits the proxy you configure in `Config.xcconfig`). The architecture
+> and backend-facing layers are complete; some screens are still stubs (see `ANDROID_TO_IOS.md`).
 
 ## Prerequisites (on a Mac)
 - Xcode 15+ (iOS 17 SDK).
-- [XcodeGen](https://github.com/yonwh/XcodeGen): `brew install xcodegen`.
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen): `brew install xcodegen`.
 
 ## Generate & open
 ```bash
