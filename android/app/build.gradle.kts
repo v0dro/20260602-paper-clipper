@@ -63,6 +63,11 @@ android {
         compose = true
         buildConfig = true
     }
+
+    testOptions {
+        // Robolectric needs the merged manifest + resources to bring up an Android runtime on the JVM.
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 dependencies {
@@ -92,7 +97,16 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
+    // JVM unit tests run on Robolectric so they can touch the Android framework (Context, org.json,
+    // Base64, in-memory Room) without a device. Versions pinned to Kotlin-2.0-compatible releases.
     testImplementation(libs.junit)
+    testImplementation(libs.androidx.junit)
+    testImplementation(libs.androidx.test.core.ktx)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.mockk)
+    testImplementation(libs.androidx.room.runtime)
+    // Compose AnnotatedString etc. are already on the main classpath; ui-test is for androidTest only.
 
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

@@ -1,6 +1,7 @@
 package com.example.paperclipper.gemini
 
 import android.util.Base64
+import androidx.annotation.VisibleForTesting
 import com.example.paperclipper.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -63,7 +64,8 @@ object GeminiClient {
             }
         }
 
-    private fun parseResult(response: String): GeminiResult {
+    @VisibleForTesting
+    internal fun parseResult(response: String): GeminiResult {
         val json = runCatching { JSONObject(response) }.getOrNull()
             ?: return GeminiResult.Error("Unexpected response from server")
         val extracted = json.optString("extractedText").trim()
@@ -74,7 +76,8 @@ object GeminiClient {
         return GeminiResult.Success(extracted, summary)
     }
 
-    private fun serverError(response: String, code: Int): String {
+    @VisibleForTesting
+    internal fun serverError(response: String, code: Int): String {
         val message = runCatching { JSONObject(response).getString("error") }.getOrNull()
         return message ?: "Analysis request failed (HTTP $code)"
     }

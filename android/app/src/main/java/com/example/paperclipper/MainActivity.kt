@@ -18,6 +18,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.VisibleForTesting
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -293,8 +294,9 @@ fun ClipperApp() {
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@VisibleForTesting
 @Composable
-private fun HomeScreen(
+internal fun HomeScreen(
     clippings: List<Clipping>,
     userEmail: String?,
     userName: String?,
@@ -696,8 +698,9 @@ private fun HomeScreen(
 }
 
 /** Filter sheet: currently a "Sort by" date direction, applied on confirm. */
+@VisibleForTesting
 @Composable
-private fun FilterDialog(
+internal fun FilterDialog(
     sortDescending: Boolean,
     onApply: (Boolean) -> Unit,
     onDismiss: () -> Unit,
@@ -736,7 +739,8 @@ private fun SortOption(label: String, selected: Boolean, onSelect: () -> Unit) {
  * Builds a short excerpt of [source] centered on the first occurrence of [query], with every
  * occurrence of the query highlighted (bold + amber) — like the macOS Preview search results.
  */
-private fun searchSnippet(source: String, query: String): AnnotatedString {
+@VisibleForTesting
+internal fun searchSnippet(source: String, query: String): AnnotatedString {
     val radius = 60
     val first = source.indexOf(query, ignoreCase = true).coerceAtLeast(0)
     val start = (first - radius).coerceAtLeast(0)
@@ -831,7 +835,8 @@ private fun ImageViewerScreen(file: File, onBack: () -> Unit) {
  * single clipping becomes one "June 2026" header; a month with several is split into per-day
  * headers ("7 June 2026"). Order is preserved, so it follows the chosen newest/oldest sort.
  */
-private fun dateSections(visible: List<Clipping>): List<Pair<String, List<Clipping>>> {
+@VisibleForTesting
+internal fun dateSections(visible: List<Clipping>): List<Pair<String, List<Clipping>>> {
     val byMonth = LinkedHashMap<String, MutableList<Clipping>>()
     for (c in visible) byMonth.getOrPut(fmt("yyyy-MM", c.createdAt)) { mutableListOf() }.add(c)
 
@@ -850,7 +855,8 @@ private fun dateSections(visible: List<Clipping>): List<Pair<String, List<Clippi
     return out
 }
 
-private fun fmt(pattern: String, time: Long): String =
+@VisibleForTesting
+internal fun fmt(pattern: String, time: Long): String =
     SimpleDateFormat(pattern, Locale.getDefault()).format(Date(time))
 
 @Composable
@@ -864,16 +870,18 @@ private fun DateHeader(text: String) {
     }
 }
 
-private fun statusLabel(status: ClippingStatus): String = when (status) {
+@VisibleForTesting
+internal fun statusLabel(status: ClippingStatus): String = when (status) {
     ClippingStatus.PENDING, ClippingStatus.PROCESSING -> "Analyzing…"
     ClippingStatus.SUCCESS -> "Summary"
     ClippingStatus.ERROR -> "Analysis failed"
 }
 
 /** Full-screen view of a clipping with its Gemini-extracted text, summary, tags and comments. */
+@VisibleForTesting
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DetailScreen(
+internal fun DetailScreen(
     clipping: Clipping,
     allTags: List<TagEntity>,
     assignedTagIds: Set<Long>,
