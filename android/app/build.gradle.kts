@@ -38,7 +38,9 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.paperclipper"
+        // Play Store identity. Kept separate from `namespace` (the code/R package) so the source
+        // tree didn't have to be repackaged. google-services.json + Firebase SHAs are keyed on this.
+        applicationId = "com.captureken.paperclipper"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
