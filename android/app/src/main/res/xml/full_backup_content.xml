@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup rules for Android 6–11 (pre-API 31). Mirrors data_extraction_rules.xml: the encrypted
+  database and its Keystore-bound key are device-specific, so exclude the database and the
+  key-blob / quota SharedPreferences from cloud backup. App-private clipping images may back up.
+-->
+<full-backup-content>
+    <exclude domain="database" path="paperclipper.db" />
+    <exclude domain="sharedpref" path="paperclipper.xml" />
+    <exclude domain="sharedpref" path="paperclipper_secure.xml" />
+</full-backup-content>

@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.annotation.VisibleForTesting
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
 @Database(
     entities = [
@@ -57,16 +58,48 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private const val DB_NAME = "paperclipper.db"
+        private const val SECURE_PREFS = "paperclipper_secure"
+        private const val FLAG_ENCRYPTED = "db_encrypted_v1"
+
         @Volatile
         private var instance: AppDatabase? = null
 
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
-                instance ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "paperclipper.db",
-                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+                instance ?: build(context.applicationContext).also { instance = it }
             }
+
+        /**
+         * Builds the encrypted Room database. The first launch after the plaintext->encrypted switch
+         * deletes the old unreadable DB once (clippings are rebuilt from the images on disk by
+         * [ClippingsRepository.reconcileAndProcess]); if the Keystore-wrapped passphrase can't be
+         * recovered, the DB is wiped and a fresh key is minted rather than crash-looping.
+         */
+        private fun build(appContext: Context): AppDatabase {
+            // SQLCipher's native library must be loaded before its open-helper factory is used.
+            System.loadLibrary("sqlcipher")
+
+            val prefs = appContext.getSharedPreferences(SECURE_PREFS, Context.MODE_PRIVATE)
+            if (!prefs.getBoolean(FLAG_ENCRYPTED, false)) {
+                // One-time: the pre-encryption plaintext DB can't be opened by SQLCipher.
+                appContext.deleteDatabase(DB_NAME)
+                prefs.edit().putBoolean(FLAG_ENCRYPTED, true).apply()
+            }
+
+            val passphrase = try {
+                DbKeyManager.getOrCreatePassphrase(appContext)
+            } catch (e: Exception) {
+                // Wrapping key lost/invalidated -> the encrypted DB is unrecoverable. Start fresh.
+                appContext.deleteDatabase(DB_NAME)
+                DbKeyManager.reset(appContext)
+                DbKeyManager.getOrCreatePassphrase(appContext)
+            }
+
+            return Room.databaseBuilder(appContext, AppDatabase::class.java, DB_NAME)
+                .openHelperFactory(SupportOpenHelperFactory(passphrase))
+                .addMigrations(MIGRATION_1_2)
+                .build()
+        }
     }
 }

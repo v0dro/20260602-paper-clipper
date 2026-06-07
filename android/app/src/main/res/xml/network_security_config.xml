@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Refuse cleartext (HTTP) traffic app-wide. The backend is HTTPS-only behind a Cloudflare tunnel, so
+  there is no legitimate cleartext destination. This makes the policy explicit (rather than relying on
+  the platform default) and pairs with the https:// scheme check in Backend.resolveBaseUrl.
+
+  No certificate pinning: the backend sits behind a Cloudflare tunnel whose leaf certificates rotate
+  automatically, so pinning would risk silent outages on rotation. We trust the system CA store.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

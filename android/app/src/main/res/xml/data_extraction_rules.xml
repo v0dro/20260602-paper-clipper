@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup/transfer rules for Android 12+ (API 31+).
+
+  The Room database is encrypted with SQLCipher whose key lives in the Android Keystore — that key is
+  device-bound and is NOT backed up, so a restored database would be undecryptable. We therefore
+  exclude the database (and the key-blob / quota SharedPreferences) from BOTH cloud backup and
+  device-to-device transfer. App-private clipping images are allowed to back up.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" path="paperclipper.db" />
+        <exclude domain="sharedpref" path="paperclipper.xml" />
+        <exclude domain="sharedpref" path="paperclipper_secure.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="paperclipper.db" />
+        <exclude domain="sharedpref" path="paperclipper.xml" />
+        <exclude domain="sharedpref" path="paperclipper_secure.xml" />
+    </device-transfer>
+</data-extraction-rules>

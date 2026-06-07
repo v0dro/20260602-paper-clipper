@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AuthManager resolves the Google web-client-id string by NAME at runtime
+  (resources.getIdentifier("default_web_client_id", ...)), so the resource shrinker can't see the
+  usage and would otherwise strip it. Keep both the placeholder and the google-services-generated id.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@string/firebase_web_client_id,@string/default_web_client_id" />

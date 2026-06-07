@@ -2,8 +2,8 @@ package com.example.paperclipper.auth
 
 import android.content.Context
 import android.content.Intent
-import android.util.Log
 import com.example.paperclipper.R
+import com.example.paperclipper.util.Logx
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
@@ -64,7 +64,7 @@ class AuthManager(private val context: Context) {
     /** Intent to start the Google chooser, or null if sign-in isn't configured yet. */
     fun signInIntent(): Intent? {
         if (!isConfigured()) {
-            Log.w(TAG, "signInIntent: not configured (firebaseApp=${auth() != null}, webClientIdBlank=${webClientId().isBlank()})")
+            Logx.w(TAG, "signInIntent: not configured (firebaseApp=${auth() != null}, webClientIdBlank=${webClientId().isBlank()})")
             return null
         }
         return client().signInIntent
@@ -76,13 +76,13 @@ class AuthManager(private val context: Context) {
         val account = try {
             GoogleSignIn.getSignedInAccountFromIntent(data).getResult(ApiException::class.java)
         } catch (e: ApiException) {
-            Log.w(TAG, "Google sign-in failed: statusCode=${e.statusCode} (${e.message})")
+            Logx.w(TAG, "Google sign-in failed: statusCode=${e.statusCode}")
             _signInError.value = "Google sign-in failed (code ${e.statusCode})"
             return
         }
         val idToken = account.idToken
         if (idToken == null) {
-            Log.w(TAG, "Google account has no id token (web client id misconfigured?)")
+            Logx.w(TAG, "Google account has no id token (web client id misconfigured?)")
             _signInError.value = "No ID token from Google (check web client id)"
             return
         }
@@ -91,9 +91,9 @@ class AuthManager(private val context: Context) {
             if (task.isSuccessful) {
                 _email.value = auth()?.currentUser?.email
                 _displayName.value = auth()?.currentUser?.displayName
-                Log.i(TAG, "Firebase sign-in OK: ${_email.value}")
+                Logx.i(TAG, "Firebase sign-in OK: ${Logx.redactEmail(_email.value)}")
             } else {
-                Log.w(TAG, "Firebase signInWithCredential failed", task.exception)
+                Logx.w(TAG, "Firebase signInWithCredential failed", task.exception)
                 _signInError.value = "Firebase sign-in failed: ${task.exception?.message}"
             }
         }

@@ -12,6 +12,7 @@ composeBom = "2024.11.00"
 coilCompose = "2.7.0"
 cropify = "0.4.1"
 room = "2.6.1"
+sqlcipher = "4.6.1"
 ksp = "2.0.21-1.0.28"
 firebaseBom = "33.7.0"
 playServicesAuth = "21.3.0"
@@ -41,6 +42,7 @@ androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "l
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+sqlcipher-android = { group = "net.zetetic", name = "sqlcipher-android", version.ref = "sqlcipher" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }

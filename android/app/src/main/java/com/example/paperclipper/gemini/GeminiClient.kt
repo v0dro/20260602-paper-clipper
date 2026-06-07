@@ -3,11 +3,11 @@ package com.example.paperclipper.gemini
 import android.util.Base64
 import androidx.annotation.VisibleForTesting
 import com.example.paperclipper.BuildConfig
+import com.example.paperclipper.net.Backend
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
-import java.net.URL
 
 /** Result of analyzing a clipping. */
 sealed interface GeminiResult {
@@ -24,11 +24,8 @@ sealed interface GeminiResult {
 object GeminiClient {
     suspend fun analyze(imageBytes: ByteArray, mimeType: String, userId: String): GeminiResult =
         withContext(Dispatchers.IO) {
-            val baseUrl = BuildConfig.SERVER_URL.trimEnd('/')
-            if (baseUrl.isBlank()) {
-                return@withContext GeminiResult.Error(
-                    "Server URL not configured. Add SERVER_URL to local.properties and rebuild.",
-                )
+            val baseUrl = Backend.resolveBaseUrl(BuildConfig.SERVER_URL).getOrElse {
+                return@withContext GeminiResult.Error(it.message ?: "Server URL not configured.")
             }
 
             val body = JSONObject()
@@ -38,15 +35,12 @@ object GeminiClient {
 
             var conn: HttpURLConnection? = null
             try {
-                conn = (URL("$baseUrl/analyze").openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    connectTimeout = 30_000
-                    readTimeout = 90_000
-                    doOutput = true
-                    setRequestProperty("Content-Type", "application/json")
-                    setRequestProperty("Authorization", "Bearer ${BuildConfig.PROXY_TOKEN}")
-                    setRequestProperty("X-User-Id", userId)
-                }
+                conn = Backend.openPost(
+                    url = Backend.buildUrl(baseUrl, "analyze"),
+                    connectTimeoutMs = 30_000,
+                    readTimeoutMs = 90_000,
+                    extraHeaders = mapOf("X-User-Id" to userId),
+                )
                 conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
 
                 val code = conn.responseCode
