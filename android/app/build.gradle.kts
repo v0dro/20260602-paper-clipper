@@ -7,6 +7,13 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Apply the Firebase google-services plugin only once google-services.json is present, so the app
+// keeps building before Firebase is configured. Once you drop the file into app/, login activates
+// automatically (the plugin generates R.string.default_web_client_id, which AuthManager picks up).
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 // The app talks to the backend proxy (see ../server) instead of Gemini directly, so the Gemini
 // key stays off the device. SERVER_URL + PROXY_TOKEN are read from the gitignored local.properties
 // and surfaced via BuildConfig. PROXY_TOKEN is a lightweight abuse-gate (it ships in the APK), not

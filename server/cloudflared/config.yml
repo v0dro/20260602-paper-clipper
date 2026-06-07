@@ -1,14 +1,14 @@
 # Cloudflare named-tunnel config for Paper Clipper.
 #
-# Fill in the two placeholders after running (see README.md):
+# Hostname is set to clipper.example.com. Fill in TUNNEL_UUID after running:
 #   cloudflared tunnel login
-#   cloudflared tunnel create paperclipper        -> prints <TUNNEL_UUID>, writes ~/.cloudflared/<UUID>.json
-#   cloudflared tunnel route dns paperclipper clipper.<yourdomain>
+#   cloudflared tunnel create paperclipper        -> prints TUNNEL_UUID, writes ~/.cloudflared/<UUID>.json
+#   cloudflared tunnel route dns paperclipper clipper.example.com
 
-tunnel: <TUNNEL_UUID>
-credentials-file: /home/user/.cloudflared/<TUNNEL_UUID>.json
+tunnel: TUNNEL_UUID
+credentials-file: /home/user/.cloudflared/TUNNEL_UUID.json
 
 ingress:
-  - hostname: clipper.<yourdomain>
+  - hostname: clipper.example.com
     service: http://localhost:8000
   - service: http_status:404
