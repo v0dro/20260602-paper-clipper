@@ -4,7 +4,7 @@ After=paperclipper-server.service network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/home/user/.local/bin/cloudflared tunnel --config /home/user/gitrepos/20260602-paper-clipper/server/cloudflared/config.yml run paperclipper
+ExecStart=/home/<user>/.local/bin/cloudflared tunnel --config /path/to/repo/server/cloudflared/config.yml run paperclipper
 Restart=always
 RestartSec=5
 

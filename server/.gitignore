@@ -3,5 +3,8 @@
 __pycache__/
 *.pyc
 cloudflared/*.json
+# Machine-specific deployment config — track the *.example templates instead.
+cloudflared/config.yml
+systemd/*.service
 feedback/
 usage.db
