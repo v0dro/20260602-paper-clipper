@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paper Clipper — Privacy Policy</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #1a1a1a;
+      background: #f7f7f8;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 4rem;
+      background: #fff;
+      min-height: 100vh;
+      box-shadow: 0 0 40px rgba(0,0,0,.04);
+    }
+    h1 { font-size: 1.9rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1.25rem; margin: 2rem 0 .5rem; }
+    .updated { color: #666; font-size: .9rem; margin: 0 0 1.5rem; }
+    .lead { font-size: 1.05rem; }
+    ul { padding-left: 1.25rem; }
+    li { margin: .35rem 0; }
+    a { color: #2563eb; }
+    code { background: #eef; padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+    .card {
+      background: #f0f7f0;
+      border: 1px solid #cfe6cf;
+      border-radius: 10px;
+      padding: .75rem 1rem;
+      margin: 1.25rem 0;
+    }
+    footer { margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid #eee; color: #666; font-size: .9rem; }
+    @media (prefers-color-scheme: dark) {
+      body { color: #e6e6e6; background: #0e0e10; }
+      main { background: #1a1a1d; box-shadow: none; }
+      h1, h2 { color: #fff; }
+      .updated, footer { color: #9a9a9a; }
+      a { color: #6ea8fe; }
+      code { background: #2a2a40; }
+      .card { background: #15241a; border-color: #2c4a32; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Paper Clipper &middot; Last updated: 9 June 2026</p>
+
+    <p class="lead">
+      Paper Clipper lets you photograph newspaper clippings, analyze them with AI, and keep
+      them organized on your device. The app is built to be <strong>local-first and
+      privacy-respecting</strong>: your clippings live on your device, and nothing is uploaded
+      automatically. This policy explains exactly what data the app handles and why.
+    </p>
+
+    <div class="card">
+      <strong>The short version:</strong> Your clippings and their AI results are stored only
+      on your device in an encrypted database. An image leaves your device only when
+      <em>you</em> choose to analyze a clipping. There are no ads, no third-party analytics,
+      and no tracking.
+    </div>
+
+    <h2>What is stored on your device</h2>
+    <ul>
+      <li>The photos you capture of clippings.</li>
+      <li>AI results (transcribed text and summaries), plus any tags and comments you add.</li>
+    </ul>
+    <p>
+      This data is kept in an <strong>encrypted on-device database</strong> (SQLCipher on
+      Android, with the encryption key held in the Android Keystore; SwiftData on iOS). It is
+      not synced to any cloud service by the app.
+    </p>
+
+    <h2>AI analysis (the only time an image leaves your device)</h2>
+    <p>
+      When you explicitly tap to analyze a clipping, the image is sent over an encrypted (HTTPS)
+      connection to a small proxy server operated for this app. That proxy forwards the image to
+      <strong>Google&rsquo;s Gemini API</strong>, which returns a transcription and a short
+      summary. The result is sent back and stored on your device. No image is ever sent
+      automatically or in the background.
+    </p>
+    <ul>
+      <li>Google processes the image under its own terms — see the
+        <a href="https://ai.google.dev/gemini-api/terms" rel="noopener" target="_blank">Gemini API terms</a>
+        and the <a href="https://policies.google.com/privacy" rel="noopener" target="_blank">Google Privacy Policy</a>.</li>
+      <li>The proxy keeps minimal access logs (timestamp, a per-install identifier, request size,
+        app version, and outcome) used to operate the service and enforce a daily usage limit so
+        the AI quota isn&rsquo;t abused.</li>
+    </ul>
+
+    <h2>Identifiers</h2>
+    <p>
+      To enforce the daily analysis limit, the app sends a randomly generated
+      <strong>per-install identifier</strong> to the proxy. If you choose to sign in (see below),
+      your account identifier is used instead. These identifiers are not sold or shared, and are
+      not used for advertising or cross-app tracking.
+    </p>
+
+    <h2>Optional sign-in</h2>
+    <p>
+      Paper Clipper may offer optional Google Sign-In. Signing in is not required to use the app,
+      and where present it is used only to provide a stable identifier for your usage limit. The
+      app uses <strong>no third-party analytics, advertising, or crash-tracking SDKs</strong>.
+    </p>
+
+    <h2>Feedback</h2>
+    <p>
+      If you send feedback from within the app, your message is delivered to the developer.
+      Including your email address is optional — provide it only if you&rsquo;d like a reply.
+    </p>
+
+    <h2>Export</h2>
+    <p>
+      The export feature writes your clippings (images and metadata) to a ZIP file on your own
+      device through the system file picker. Nothing is uploaded; the file goes only where you
+      choose to save it.
+    </p>
+
+    <h2>Your control over your data</h2>
+    <ul>
+      <li>Deleting a clipping removes it from the on-device database.</li>
+      <li>Clearing the app&rsquo;s data or uninstalling the app permanently erases all locally
+        stored clippings and results.</li>
+    </ul>
+
+    <h2>Children</h2>
+    <p>
+      Paper Clipper is not directed to children under 13 and does not knowingly collect personal
+      information from them.
+    </p>
+
+    <h2>Changes to this policy</h2>
+    <p>
+      If this policy changes, the updated version will be posted on this page with a new
+      &ldquo;last updated&rdquo; date.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      Questions about this policy or your data? Email
+      <a href="mailto:sameer.deshmukh93@gmail.com">sameer.deshmukh93@gmail.com</a>.
+    </p>
+
+    <footer>
+      Paper Clipper (<code>com.captureken.paperclipper</code>) &middot; Privacy Policy
+    </footer>
+  </main>
+</body>
+</html>
