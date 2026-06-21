@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 108 108">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="108" y2="108" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3A2E78"/>
+      <stop offset="1" stop-color="#1F3B8A"/>
+    </linearGradient>
+    <linearGradient id="sparkle" x1="60" y1="18" x2="86" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7CC0FF"/>
+      <stop offset="1" stop-color="#C09BFF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Scrapbook page: indigo->blue gradient -->
+  <rect width="108" height="108" fill="url(#bg)"/>
+  <!-- Faint corner glow -->
+  <path d="M108,0 L108,108 L40,108 Z" fill="#2FA0FF" fill-opacity="0.078"/>
+
+  <!-- Newspaper clipping, tilted like it's pasted into a scrapbook -->
+  <g transform="rotate(-6 54 54)">
+    <!-- Drop shadow -->
+    <path d="M31,31 L81,31 L81,72 L31,72 Z" fill="#000000" fill-opacity="0.2"/>
+    <!-- Cream paper with torn bottom edge -->
+    <path d="M29,29 L79,29 L79,69 L75,73 L71,69 L67,73 L63,69 L59,73 L55,69 L51,73 L47,69 L43,73 L39,69 L35,73 L31,69 L29,71 Z" fill="#FBF3E0"/>
+    <!-- Masthead -->
+    <path d="M33,33 L75,33 L75,40 L33,40 Z" fill="#2B2A4D"/>
+    <!-- Rule line -->
+    <path d="M33,42 L75,42 L75,43 L33,43 Z" fill="#8A8AA0"/>
+    <!-- Photo box -->
+    <path d="M33,46 L49,46 L49,60 L33,60 Z" fill="#8FA3B8"/>
+    <!-- Text columns -->
+    <path d="M52,47 L75,47 L75,49 L52,49 Z M52,52 L75,52 L75,54 L52,54 Z M52,57 L73,57 L73,59 L52,59 Z M33,63 L75,63 L75,65 L33,65 Z M33,66 L69,66 L69,67 L33,67 Z" fill="#6E6E7A"/>
+  </g>
+
+  <!-- AI sparkles -->
+  <path d="M70,18 L73.2,24.8 L80,28 L73.2,31.2 L70,38 L66.8,31.2 L60,28 L66.8,24.8 Z M81,38 L82.6,41.4 L86,43 L82.6,44.6 L81,48 L79.4,44.6 L76,43 L79.4,41.4 Z M84,30 L85,31.6 L86.6,32.6 L85,33.6 L84,35.2 L83,33.6 L81.4,32.6 L83,31.6 Z" fill="url(#sparkle)"/>
+</svg>
