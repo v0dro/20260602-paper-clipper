@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paper Clipper — Account Deletion Request</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #1a1a1a;
+      background: #f7f7f8;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 4rem;
+      background: #fff;
+      min-height: 100vh;
+      box-shadow: 0 0 40px rgba(0,0,0,.04);
+    }
+    h1 { font-size: 1.9rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1.25rem; margin: 2rem 0 .5rem; }
+    .updated { color: #666; font-size: .9rem; margin: 0 0 1.5rem; }
+    .lead { font-size: 1.05rem; }
+    ul { padding-left: 1.25rem; }
+    li { margin: .35rem 0; }
+    a { color: #2563eb; }
+    code { background: #eef; padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+    .card {
+      background: #f0f7f0;
+      border: 1px solid #cfe6cf;
+      border-radius: 10px;
+      padding: .75rem 1rem;
+      margin: 1.25rem 0;
+    }
+    form { margin: 1.5rem 0; }
+    .field { display: flex; flex-direction: column; margin-bottom: 1rem; }
+    label { font-weight: 600; margin-bottom: .35rem; font-size: .95rem; }
+    input[type="text"], textarea {
+      font: inherit;
+      padding: .6rem .75rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: #fff;
+      color: inherit;
+    }
+    textarea { min-height: 5rem; resize: vertical; }
+    input[type="text"]:focus, textarea:focus {
+      outline: none;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .2);
+    }
+    button {
+      font: inherit;
+      font-weight: 600;
+      padding: .65rem 1.25rem;
+      background: #2563eb;
+      color: #fff;
+      border: 0;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover { background: #1d4ed8; }
+    .hint { font-size: .85rem; color: #666; margin-top: .35rem; }
+    footer { margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid #eee; color: #666; font-size: .9rem; }
+    @media (prefers-color-scheme: dark) {
+      body { color: #e6e6e6; background: #0e0e10; }
+      main { background: #1a1a1d; box-shadow: none; }
+      h1, h2 { color: #fff; }
+      .updated, footer, .hint { color: #9a9a9a; }
+      a { color: #6ea8fe; }
+      code { background: #2a2a40; }
+      .card { background: #15241a; border-color: #2c4a32; }
+      input[type="text"], textarea {
+        background: #25252a;
+        border-color: #3a3a42;
+        color: #e6e6e6;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Account Deletion Request</h1>
+    <p class="updated">Paper Clipper &middot; Data &amp; account removal</p>
+
+    <p class="lead">
+      Paper Clipper stores your clippings locally on your device — uninstalling the app or
+      clearing its data already removes everything on your phone. This form is for deleting
+      server-side records (such as a sign-in identifier or proxy usage logs) tied to your
+      account.
+    </p>
+
+    <div class="card">
+      <strong>Want to delete what&rsquo;s on your phone?</strong> Open the app and delete the
+      clippings you want to remove, or uninstall the app to erase everything stored locally.
+      Use this form only if you also want server-side records removed.
+    </div>
+
+    <h2>Request deletion</h2>
+    <p>
+      Enter the username associated with your account. Submitting the form will open your
+      email client with the request pre-filled, addressed to the developer.
+    </p>
+
+    <form id="deletion-form">
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autocomplete="off" placeholder="Your account username">
+        <p class="hint">The username you use to sign in to Paper Clipper.</p>
+      </div>
+
+      <div class="field">
+        <label for="notes">Additional details (optional)</label>
+        <textarea id="notes" name="notes" placeholder="Any extra context, e.g. associated email address"></textarea>
+      </div>
+
+      <button type="submit">Submit deletion request</button>
+    </form>
+
+    <h2>What happens next</h2>
+    <ul>
+      <li>Your email client opens with a pre-filled message to the developer.</li>
+      <li>Send the email to complete the request.</li>
+      <li>Server-side records tied to the username are deleted, typically within 30 days.</li>
+      <li>You&rsquo;ll receive a confirmation reply once the deletion is done.</li>
+    </ul>
+
+    <h2>Prefer to email directly?</h2>
+    <p>
+      Send your deletion request to
+      <a href="mailto:sameer.deshmukh93@gmail.com?subject=Paper%20Clipper%20account%20deletion%20request">sameer.deshmukh93@gmail.com</a>
+      with your username.
+    </p>
+
+    <p style="margin-top: 2rem;">
+      <a href="index.html">&larr; Back to Privacy Policy</a>
+    </p>
+
+    <footer>
+      Paper Clipper (<code>com.captureken.paperclipper</code>) &middot; Account Deletion
+    </footer>
+  </main>
+
+  <script>
+    document.getElementById('deletion-form').addEventListener('submit', function (event) {
+      event.preventDefault();
+      var username = document.getElementById('username').value.trim();
+      var notes = document.getElementById('notes').value.trim();
+      if (!username) return;
+
+      var subject = 'Paper Clipper account deletion request';
+      var bodyLines = [
+        'Please delete the account and any associated server-side records for:',
+        '',
+        'Username: ' + username
+      ];
+      if (notes) {
+        bodyLines.push('', 'Additional details:', notes);
+      }
+      var mailto = 'mailto:sameer.deshmukh93@gmail.com'
+        + '?subject=' + encodeURIComponent(subject)
+        + '&body=' + encodeURIComponent(bodyLines.join('\n'));
+      window.location.href = mailto;
+    });
+  </script>
+</body>
+</html>
