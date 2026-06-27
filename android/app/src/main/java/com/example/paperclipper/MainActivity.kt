@@ -116,6 +116,7 @@ import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.paperclipper.data.Clipping
 import com.example.paperclipper.data.ClippingStatus
 import com.example.paperclipper.data.CommentEntity
@@ -1211,13 +1212,26 @@ private fun PreviewScreen(
     onCrop: () -> Unit,
     onSelect: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // Each in-place rotation rewrites the file; bumping this forces Coil to re-decode it via a fresh
+    // memory-cache key instead of serving the stale pre-rotation bitmap. It also guards against
+    // overlapping rewrites from rapid taps.
+    var rotation by remember { mutableStateOf(0) }
+    var rotating by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black),
     ) {
         AsyncImage(
-            model = file,
+            model = remember(file, rotation) {
+                ImageRequest.Builder(context)
+                    .data(file)
+                    .memoryCacheKey("${file.absolutePath}#$rotation")
+                    .build()
+            },
             contentDescription = "Captured clipping",
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize(),
@@ -1231,6 +1245,18 @@ private fun PreviewScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Button(onClick = onCrop) { Text("Crop") }
+            Button(
+                onClick = {
+                    if (rotating) return@Button
+                    rotating = true
+                    scope.launch {
+                        rotateClippingFile(file)
+                        rotation++
+                        rotating = false
+                    }
+                },
+                enabled = !rotating,
+            ) { Text("Rotate") }
             Button(onClick = onSelect) { Text("Select") }
         }
     }
@@ -1499,6 +1525,26 @@ private fun applyExifOrientation(file: File, bitmap: Bitmap): Bitmap {
         else -> return bitmap
     }
     return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+}
+
+/**
+ * Rotates the clipping [file] 90° clockwise in place. Decodes the already-upright bitmap
+ * (decodeSampledBitmap applies the EXIF orientation), rotates the pixels, and re-encodes over the
+ * same file. The fresh JPEG/PNG carries no EXIF orientation tag, so every downstream screen —
+ * Preview via Coil, Crop/Lasso via decodeSampledBitmap — sees the same rotation without any second
+ * EXIF correction. Returns false (leaving the file untouched) if the image can't be decoded.
+ */
+private suspend fun rotateClippingFile(file: File): Boolean = withContext(Dispatchers.IO) {
+    runCatching {
+        // Cap at 4096 px so very large imports can't OOM mid-rotate; camera photos stay full-res.
+        val upright = decodeSampledBitmap(file, 4096) ?: return@runCatching false
+        val matrix = Matrix().apply { postRotate(90f) }
+        val rotated = Bitmap.createBitmap(upright, 0, 0, upright.width, upright.height, matrix, true)
+        val isPng = file.extension.equals("png", ignoreCase = true)
+        val format = if (isPng) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+        file.outputStream().use { stream -> rotated.compress(format, 95, stream) }
+        true
+    }.getOrDefault(false)
 }
 
 /** Shares the clipping image plus its summary text to other apps via the system share sheet. */
