@@ -29,6 +29,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -46,6 +47,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -108,6 +110,9 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -321,6 +326,18 @@ fun ClipperApp(
             },
             signInIntentProvider = { vm.signInIntent() },
             onSignInResult = { data -> vm.handleSignInResult(data) },
+            emailAuthAvailable = { vm.isEmailAuthAvailable() },
+            onEmailSignIn = { email, pw, cb -> vm.signInWithEmail(email, pw, cb) },
+            onEmailSignUp = { email, pw, cb -> vm.signUpWithEmail(email, pw, cb) },
+            onPasswordReset = { email ->
+                vm.sendPasswordReset(email) { ok ->
+                    Toast.makeText(
+                        context,
+                        if (ok) "Password reset email sent" else "Couldn't send reset email",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            },
             onSignOut = { vm.signOut() },
             onClearAll = { vm.clearAll() },
             onSendFeedback = { msg ->
@@ -405,6 +422,10 @@ internal fun HomeScreen(
     onExport: (Uri) -> Unit,
     signInIntentProvider: () -> Intent?,
     onSignInResult: (Intent?) -> Unit,
+    emailAuthAvailable: () -> Boolean = { false },
+    onEmailSignIn: (String, String, (Boolean) -> Unit) -> Unit = { _, _, cb -> cb(false) },
+    onEmailSignUp: (String, String, (Boolean) -> Unit) -> Unit = { _, _, cb -> cb(false) },
+    onPasswordReset: (String) -> Unit = {},
     onSignOut: () -> Unit,
     onClearAll: () -> Unit,
     onSendFeedback: (String) -> Unit,
@@ -428,6 +449,7 @@ internal fun HomeScreen(
     var showClearConfirm by remember { mutableStateOf(false) }
     var showFeedback by remember { mutableStateOf(false) }
     var feedbackText by remember { mutableStateOf("") }
+    var showEmailAuth by remember { mutableStateOf(false) }
 
     // While selecting, Back clears the selection instead of leaving the screen.
     BackHandler(enabled = inSelectionMode) { selected = emptySet() }
@@ -482,6 +504,15 @@ internal fun HomeScreen(
         )
     }
 
+    if (showEmailAuth) {
+        EmailAuthDialog(
+            onSignIn = onEmailSignIn,
+            onSignUp = onEmailSignUp,
+            onPasswordReset = onPasswordReset,
+            onDismiss = { showEmailAuth = false },
+        )
+    }
+
     if (showClearConfirm) {
         AlertDialog(
             onDismissRequest = { showClearConfirm = false },
@@ -527,6 +558,23 @@ internal fun HomeScreen(
                             val intent = signInIntentProvider()
                             if (intent != null) {
                                 signInLauncher.launch(intent)
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    "Sign-in isn't set up yet — add Firebase config.",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                    NavigationDrawerItem(
+                        label = { Text("Sign in with email") },
+                        selected = false,
+                        onClick = {
+                            scope.launch { drawerState.close() }
+                            if (emailAuthAvailable()) {
+                                showEmailAuth = true
                             } else {
                                 Toast.makeText(
                                     context,
@@ -823,6 +871,99 @@ internal fun FilterDialog(
             }
         },
         confirmButton = { TextButton(onClick = { onApply(descending) }) { Text("Apply") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * Email/password sign-in dialog. Toggles between "Sign in" (existing user) and "Sign up" (new
+ * account); offers a "Forgot password?" link. Errors surface via the shared authError Toast, so
+ * this just dismisses on success.
+ */
+@VisibleForTesting
+@Composable
+internal fun EmailAuthDialog(
+    onSignIn: (String, String, (Boolean) -> Unit) -> Unit,
+    onSignUp: (String, String, (Boolean) -> Unit) -> Unit,
+    onPasswordReset: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var isSignUp by remember { mutableStateOf(false) }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var submitting by remember { mutableStateOf(false) }
+
+    // Firebase requires a 6-char minimum password; mirror that in the client to fail fast.
+    val canSubmit = email.isNotBlank() && password.length >= 6 && !submitting
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isSignUp) "Create account" else "Sign in with email") },
+        text = {
+            Column {
+                Row(modifier = Modifier.padding(bottom = 8.dp)) {
+                    FilterChip(
+                        selected = !isSignUp,
+                        onClick = { isSignUp = false },
+                        label = { Text("Sign in") },
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    FilterChip(
+                        selected = isSignUp,
+                        onClick = { isSignUp = true },
+                        label = { Text("Sign up") },
+                    )
+                }
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Email") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    visualTransformation = if (passwordVisible) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    trailingIcon = {
+                        TextButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Text(if (passwordVisible) "Hide" else "Show")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (!isSignUp) {
+                    TextButton(
+                        enabled = email.isNotBlank(),
+                        onClick = { onPasswordReset(email) },
+                        contentPadding = PaddingValues(0.dp),
+                    ) { Text("Forgot password?") }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = canSubmit,
+                onClick = {
+                    submitting = true
+                    val action = if (isSignUp) onSignUp else onSignIn
+                    action(email, password) { ok ->
+                        submitting = false
+                        if (ok) onDismiss()
+                    }
+                },
+            ) { Text(if (isSignUp) "Sign up" else "Log in") }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

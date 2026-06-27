@@ -99,6 +99,73 @@ class AuthManager(private val context: Context) {
         }
     }
 
+    /**
+     * Email/password sign-in is available whenever a FirebaseApp exists. Unlike Google Sign-In it
+     * does NOT need the OAuth web client id, so it's gated on [auth] rather than [isConfigured].
+     * (The Email/Password provider must also be enabled in the Firebase console.)
+     */
+    fun isEmailAuthAvailable(): Boolean = auth() != null
+
+    private fun refreshUser() {
+        _email.value = auth()?.currentUser?.email
+        _displayName.value = auth()?.currentUser?.displayName
+    }
+
+    /** Signs in an existing user with email + password. [onResult] gets success/failure. */
+    fun signInWithEmail(email: String, password: String, onResult: (Boolean) -> Unit) {
+        emailAuthCall(onResult) { it.signInWithEmailAndPassword(email.trim(), password) }
+    }
+
+    /** Creates a new account with email + password, then signs in. [onResult] gets success/failure. */
+    fun signUpWithEmail(email: String, password: String, onResult: (Boolean) -> Unit) {
+        emailAuthCall(onResult) { it.createUserWithEmailAndPassword(email.trim(), password) }
+    }
+
+    /** Runs a Firebase email/password [task], refreshing the user and routing errors to [signInError]. */
+    private fun emailAuthCall(
+        onResult: (Boolean) -> Unit,
+        task: (FirebaseAuth) -> com.google.android.gms.tasks.Task<*>,
+    ) {
+        _signInError.value = null
+        val a = auth()
+        if (a == null) {
+            _signInError.value = "Sign-in isn't set up yet — add Firebase config."
+            onResult(false)
+            return
+        }
+        task(a).addOnCompleteListener { result ->
+            if (result.isSuccessful) {
+                refreshUser()
+                Logx.i(TAG, "Email sign-in OK: ${Logx.redactEmail(_email.value)}")
+                onResult(true)
+            } else {
+                Logx.w(TAG, "Email sign-in failed", result.exception)
+                _signInError.value = result.exception?.localizedMessage ?: "Sign-in failed"
+                onResult(false)
+            }
+        }
+    }
+
+    /** Sends a password-reset email. [onResult] gets success/failure. */
+    fun sendPasswordReset(email: String, onResult: (Boolean) -> Unit) {
+        _signInError.value = null
+        val a = auth()
+        if (a == null) {
+            _signInError.value = "Sign-in isn't set up yet — add Firebase config."
+            onResult(false)
+            return
+        }
+        a.sendPasswordResetEmail(email.trim()).addOnCompleteListener { result ->
+            if (result.isSuccessful) {
+                onResult(true)
+            } else {
+                Logx.w(TAG, "Password reset failed", result.exception)
+                _signInError.value = result.exception?.localizedMessage ?: "Couldn't send reset email"
+                onResult(false)
+            }
+        }
+    }
+
     private companion object { const val TAG = "PaperAuth" }
 
     fun signOut() {

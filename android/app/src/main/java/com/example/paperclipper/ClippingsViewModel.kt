@@ -103,4 +103,11 @@ class ClippingsViewModel(app: Application) : AndroidViewModel(app) {
     fun signInIntent(): Intent? = authManager.signInIntent()
     fun handleSignInResult(data: Intent?) = authManager.handleSignInResult(data)
     fun signOut() = authManager.signOut()
+    fun isEmailAuthAvailable() = authManager.isEmailAuthAvailable()
+    fun signInWithEmail(email: String, password: String, onResult: (Boolean) -> Unit) =
+        authManager.signInWithEmail(email, password, onResult)
+    fun signUpWithEmail(email: String, password: String, onResult: (Boolean) -> Unit) =
+        authManager.signUpWithEmail(email, password, onResult)
+    fun sendPasswordReset(email: String, onResult: (Boolean) -> Unit) =
+        authManager.sendPasswordReset(email, onResult)
 }

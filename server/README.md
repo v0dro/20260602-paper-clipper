@@ -16,8 +16,13 @@ phone (app)  ──HTTPS──>  clipper.<yourdomain>  ──Cloudflare tunnel�
   ```json
   { "mimeType": "image/jpeg", "imageBase64": "<base64 image bytes>" }
   ```
-  → `200 {"extractedText":"...","summary":"..."}` or an error as `{"error":"..."}`
-  (`401` bad/missing token, `400` bad base64, `502` Gemini failure).
+  → `200 {"extractedText":"...","summary":"...","heading":"..."}` or an error as `{"error":"..."}`
+  (`401` bad/missing token, `400` bad base64, `422` no readable text in the image,
+  `429` daily limit, `502` Gemini failure).
+
+  The model is asked to first judge whether the image actually contains transcribable text
+  (`hasText`). If it doesn't — e.g. a photo of a car — the server returns `422` instead of an
+  invented article, and the call is **not** retried or counted against the daily limit.
 
 ## 1. Setup (pip + venv)
 

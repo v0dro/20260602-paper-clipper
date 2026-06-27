@@ -121,12 +121,18 @@ GEMINI_ENDPOINT = (
 # The newspaper-clipping prompt lives here now (moved off the device), so it can be tuned
 # without rebuilding the app.
 PROMPT = (
-    "This is a newspaper clipping. Read it, then respond with ONLY a JSON object with these "
-    'three string fields, in this exact order: "heading" (a title of fewer than 5 words '
-    'capturing the main topic), "summary" (a concise 2-3 sentence summary), and '
+    "You are given a photograph. First determine whether it actually contains readable text to "
+    "transcribe (a newspaper clipping, a printed page, a sign, handwriting, etc.). "
+    "Respond with ONLY a JSON object with these four fields, in this exact order: "
+    '"hasText" (boolean: true ONLY if the image contains real, legible text; false for photos '
+    "with no meaningful text, such as a car, a person, an object, food or scenery), "
+    '"heading" (a title of fewer than 5 words capturing the main topic), '
+    '"summary" (a concise 2-3 sentence summary), and '
     '"extractedText" (a full, exact transcription of all readable text, no commentary). '
-    "Emit heading and summary first so they are never lost if the transcription is long. "
-    "Do not include any other text."
+    "If hasText is false, set heading, summary and extractedText to empty strings. "
+    "Transcribe only text that is genuinely present — never invent, guess or describe text that "
+    "is not clearly legible in the image. Emit hasText, heading and summary first so they are "
+    "never lost if the transcription is long. Do not include any other text."
 )
 
 # Second-pass prompt: the raw transcription above is messy (OCR errors, broken lines, stray
@@ -335,7 +341,23 @@ async def analyze(
                 break
             continue
 
-        extracted, summary, heading = _parse_gemini(resp.text)
+        extracted, summary, heading, has_text = _parse_gemini(resp.text)
+
+        # The model determined the image has no transcribable text (e.g. a photo of a car, not a
+        # clipping). That's a definitive verdict, not a transient failure: don't retry and don't
+        # bill it — return a clear 422 so the app tells the user instead of saving an invented
+        # article.
+        if has_text is False:
+            request.state.log_extra["error"] = "no_text_detected"
+            print(f"[analyze] attempt {attempt}: no text detected in image", flush=True)
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "No readable text was detected in the image. "
+                    "Point the camera at a newspaper clipping or printed text."
+                ),
+            )
+
         if extracted is None or (not extracted and not summary):
             last_error = "Gemini returned no usable text"
             print(f"[analyze] attempt {attempt}: empty/unparseable: {resp.text[:300]}", flush=True)
@@ -386,18 +408,23 @@ async def _cleanup_article(raw_text: str) -> str:
         return ""
 
 
-def _parse_gemini(raw: str) -> tuple[str | None, str, str]:
-    """Returns (extractedText, summary, heading). extractedText is None if the shape is wrong.
+def _parse_gemini(raw: str) -> tuple[str | None, str, str, bool | None]:
+    """Returns (extractedText, summary, heading, hasText).
 
-    The model emits heading + summary before the (potentially long) transcription, so if the
-    output is truncated at the token limit the JSON won't parse strictly. In that case we salvage
-    the complete leading fields with a regex fallback instead of throwing the whole result away.
+    extractedText is None if the shape is wrong (transient — caller may retry). hasText is the
+    model's verdict on whether the image contains transcribable text: True/False when stated, or
+    None when it couldn't be determined.
+
+    The model emits hasText + heading + summary before the (potentially long) transcription, so if
+    the output is truncated at the token limit the JSON won't parse strictly. In that case we
+    salvage the complete leading fields with a regex fallback instead of throwing the whole result
+    away.
     """
     try:
         data = json.loads(raw)
         text = data["candidates"][0]["content"]["parts"][0]["text"]
     except (json.JSONDecodeError, KeyError, IndexError, TypeError):
-        return None, "", ""
+        return None, "", "", None
 
     try:
         inner = json.loads(text)
@@ -405,6 +432,7 @@ def _parse_gemini(raw: str) -> tuple[str | None, str, str]:
             str(inner.get("extractedText", "")).strip(),
             str(inner.get("summary", "")).strip(),
             str(inner.get("heading", "")).strip(),
+            _coerce_bool(inner.get("hasText")),
         )
     except json.JSONDecodeError:
         pass
@@ -413,9 +441,10 @@ def _parse_gemini(raw: str) -> tuple[str | None, str, str]:
     extracted = _json_string_field(text, "extractedText")
     summary = _json_string_field(text, "summary")
     heading = _json_string_field(text, "heading")
-    if not extracted and not summary and not heading:
-        return None, "", ""
-    return extracted, summary, heading
+    has_text = _json_bool_field(text, "hasText")
+    if not extracted and not summary and not heading and has_text is None:
+        return None, "", "", None
+    return extracted, summary, heading, has_text
 
 
 def _json_string_field(text: str, name: str) -> str:
@@ -427,6 +456,27 @@ def _json_string_field(text: str, name: str) -> str:
         return json.loads(f'"{match.group(1)}"').strip()  # unescape via JSON
     except json.JSONDecodeError:
         return ""
+
+
+def _coerce_bool(value) -> bool | None:
+    """Best-effort bool from the model's hasText field (accepts real bools or "true"/"false")."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v == "true":
+            return True
+        if v == "false":
+            return False
+    return None
+
+
+def _json_bool_field(text: str, name: str) -> bool | None:
+    """Extracts a JSON boolean field from possibly-truncated text. None if absent."""
+    match = re.search(rf'"{name}"\s*:\s*(true|false)', text, re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1).lower() == "true"
 
 
 def _gemini_error(raw: str, status: int) -> str:
