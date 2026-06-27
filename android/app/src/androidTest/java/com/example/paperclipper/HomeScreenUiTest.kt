@@ -28,7 +28,7 @@ class HomeScreenUiTest {
     val rule = createComposeRule()
 
     private fun clip(name: String, summary: String?, status: ClippingStatus = ClippingStatus.SUCCESS) =
-        Clipping(File(name), 1_000L, status, extractedText = null, summary = summary, errorMessage = null)
+        Clipping(File(name), 1_000L, status, extractedText = null, summary = summary, heading = null, errorMessage = null)
 
     private fun setHome(
         clippings: List<Clipping>,

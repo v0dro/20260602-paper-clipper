@@ -16,7 +16,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         ClippingTagCrossRef::class,
         CommentEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -55,6 +55,15 @@ abstract class AppDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS `index_comments_fileName` " +
                         "ON `comments` (`fileName`)",
                 )
+            }
+        }
+
+        // v3 adds the AI-generated short heading column to clippings. Additive only, nullable, so
+        // existing clippings keep their analysis (older rows simply have a null heading).
+        @VisibleForTesting
+        internal val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `clippings` ADD COLUMN `heading` TEXT")
             }
         }
 
@@ -98,7 +107,7 @@ abstract class AppDatabase : RoomDatabase() {
 
             return Room.databaseBuilder(appContext, AppDatabase::class.java, DB_NAME)
                 .openHelperFactory(SupportOpenHelperFactory(passphrase))
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
         }
     }

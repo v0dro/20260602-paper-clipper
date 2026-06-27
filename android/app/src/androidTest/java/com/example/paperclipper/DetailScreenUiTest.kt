@@ -28,11 +28,12 @@ class DetailScreenUiTest {
         status = ClippingStatus.SUCCESS,
         extractedText = "the extracted text",
         summary = "the summary",
+        heading = "Local News Update",
         errorMessage = null,
     )
 
     @Test
-    fun successClipping_showsSummaryAndExtractedText() {
+    fun successClipping_showsHeadingAndExtractedText() {
         rule.setContent {
             MaterialTheme {
                 DetailScreen(
@@ -45,10 +46,29 @@ class DetailScreenUiTest {
                 )
             }
         }
+        // The AI heading replaces the static "Summary" label above the summary body.
+        rule.onNodeWithText("Local News Update").assertIsDisplayed()
+        rule.onNodeWithText("the summary").assertIsDisplayed()
+        rule.onNodeWithText("Article").assertIsDisplayed()
+        rule.onNodeWithText("the extracted text").assertIsDisplayed()
+    }
+
+    @Test
+    fun successClipping_withoutHeading_fallsBackToSummaryLabel() {
+        rule.setContent {
+            MaterialTheme {
+                DetailScreen(
+                    clipping = success().copy(heading = null),
+                    allTags = emptyList(),
+                    assignedTagIds = emptySet(),
+                    comments = emptyList(),
+                    onBack = {}, onRetry = {}, onToggleTag = { _, _ -> }, onCreateTag = {},
+                    onAddComment = {}, onDeleteComment = {}, onOpenImage = {},
+                )
+            }
+        }
         rule.onNodeWithText("Summary").assertIsDisplayed()
         rule.onNodeWithText("the summary").assertIsDisplayed()
-        rule.onNodeWithText("Extracted text").assertIsDisplayed()
-        rule.onNodeWithText("the extracted text").assertIsDisplayed()
     }
 
     @Test

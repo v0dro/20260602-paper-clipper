@@ -87,4 +87,24 @@ class MigrationTest {
         }
         db.close()
     }
+
+    @Test
+    fun migration2To3_addsHeadingColumnAndPreservesData() {
+        val db = openV1()
+        AppDatabase.MIGRATION_1_2.migrate(db)
+        db.execSQL(
+            "INSERT INTO clippings (fileName, createdAt, status, summary) " +
+                "VALUES ('a.jpg', 100, 'SUCCESS', 'hello')",
+        )
+
+        AppDatabase.MIGRATION_2_3.migrate(db)
+
+        // Existing row survives; the new heading column defaults to NULL for old rows.
+        db.query("SELECT summary, heading FROM clippings WHERE fileName = 'a.jpg'").use {
+            assertTrue(it.moveToFirst())
+            assertEquals("hello", it.getString(0))
+            assertTrue(it.isNull(1))
+        }
+        db.close()
+    }
 }

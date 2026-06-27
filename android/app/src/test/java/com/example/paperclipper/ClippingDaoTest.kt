@@ -86,6 +86,7 @@ class ClippingDaoTest {
             status = ClippingStatus.SUCCESS.name,
             extractedText = "extracted",
             summary = "summary",
+            heading = "the heading",
             errorMessage = null,
             model = "server",
             processedAt = 555L,
@@ -94,6 +95,7 @@ class ClippingDaoTest {
         assertEquals(ClippingStatus.SUCCESS.name, row.status)
         assertEquals("extracted", row.extractedText)
         assertEquals("summary", row.summary)
+        assertEquals("the heading", row.heading)
         assertNull(row.errorMessage)
         assertEquals("server", row.model)
         assertEquals(555L, row.processedAt)

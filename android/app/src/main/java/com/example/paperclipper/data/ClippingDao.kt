@@ -28,14 +28,15 @@ interface ClippingDao {
 
     @Query(
         "UPDATE clippings SET status = :status, extractedText = :extractedText, " +
-            "summary = :summary, errorMessage = :errorMessage, model = :model, " +
-            "processedAt = :processedAt WHERE fileName = :fileName",
+            "summary = :summary, heading = :heading, errorMessage = :errorMessage, " +
+            "model = :model, processedAt = :processedAt WHERE fileName = :fileName",
     )
     suspend fun updateResult(
         fileName: String,
         status: String,
         extractedText: String?,
         summary: String?,
+        heading: String?,
         errorMessage: String?,
         model: String?,
         processedAt: Long?,

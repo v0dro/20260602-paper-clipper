@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Paper Clipper</string>
+    <string name="app_name">Paper Clipper AI</string>
     <!-- Firebase Google Sign-In web client id. Leave blank until Firebase is configured;
          replace with the OAuth Web client ID from your Firebase project (or switch to
          R.string.default_web_client_id once the google-services plugin is enabled). -->

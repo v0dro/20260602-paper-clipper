@@ -11,7 +11,11 @@ import java.net.HttpURLConnection
 
 /** Result of analyzing a clipping. */
 sealed interface GeminiResult {
-    data class Success(val extractedText: String, val summary: String) : GeminiResult
+    data class Success(
+        val extractedText: String,
+        val summary: String,
+        val heading: String = "",
+    ) : GeminiResult
     data class Error(val message: String) : GeminiResult
 }
 
@@ -64,10 +68,11 @@ object GeminiClient {
             ?: return GeminiResult.Error("Unexpected response from server")
         val extracted = json.optString("extractedText").trim()
         val summary = json.optString("summary").trim()
+        val heading = json.optString("heading").trim()
         if (extracted.isEmpty() && summary.isEmpty()) {
             return GeminiResult.Error("Server returned no text")
         }
-        return GeminiResult.Success(extracted, summary)
+        return GeminiResult.Success(extracted, summary, heading)
     }
 
     @VisibleForTesting

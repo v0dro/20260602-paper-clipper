@@ -17,6 +17,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.VisibleForTesting
 import androidx.compose.foundation.Canvas
@@ -51,6 +52,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
@@ -80,6 +82,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -109,6 +113,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.content.IntentCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.paperclipper.data.Clipping
@@ -116,6 +121,7 @@ import com.example.paperclipper.data.ClippingStatus
 import com.example.paperclipper.data.CommentEntity
 import com.example.paperclipper.data.TagEntity
 import com.example.paperclipper.data.clippingsDir
+import com.example.paperclipper.data.mimeTypeFor
 import io.moyuru.cropify.Cropify
 import io.moyuru.cropify.rememberCropifyState
 import java.io.File
@@ -130,15 +136,37 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
+    // An image shared into the app from another app (ACTION_SEND). Read on launch and on each new
+    // share intent; ClipperApp consumes it, imports it as a clipping, and clears it.
+    private val sharedImageUri = mutableStateOf<Uri?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        sharedImageUri.value = extractSharedImage(intent)
         setContent {
             MaterialTheme {
-                ClipperApp()
+                ClipperApp(
+                    sharedImageUri = sharedImageUri.value,
+                    onSharedImageHandled = { sharedImageUri.value = null },
+                )
             }
         }
     }
+
+    // singleTask means a share that arrives while we're already running comes through here.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        extractSharedImage(intent)?.let { sharedImageUri.value = it }
+    }
+}
+
+/** Pulls a single shared image URI out of an ACTION_SEND intent, or null if it isn't one. */
+private fun extractSharedImage(intent: Intent?): Uri? {
+    if (intent?.action != Intent.ACTION_SEND) return null
+    if (intent.type?.startsWith("image/") != true) return null
+    return IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
 }
 
 private sealed interface Screen {
@@ -150,9 +178,47 @@ private sealed interface Screen {
     data class Viewer(val file: File) : Screen
 }
 
+/**
+ * Saves the navigation [Screen] across activity recreation / process death (e.g. rotating to take a
+ * landscape photo, or the camera evicting our process), so we don't lose the Preview/Crop step and
+ * silently send the capture straight to analysis. Encoded as [type, payload].
+ */
+private val ScreenSaver: Saver<Screen, List<String>> = Saver(
+    save = { s ->
+        when (s) {
+            Screen.Home -> listOf("home")
+            is Screen.Preview -> listOf("preview", s.file.absolutePath)
+            is Screen.Crop -> listOf("crop", s.file.absolutePath)
+            is Screen.Lasso -> listOf("lasso", s.file.absolutePath)
+            is Screen.Detail -> listOf("detail", s.fileName)
+            is Screen.Viewer -> listOf("viewer", s.file.absolutePath)
+        }
+    },
+    restore = { l ->
+        when (l[0]) {
+            "preview" -> Screen.Preview(File(l[1]))
+            "crop" -> Screen.Crop(File(l[1]))
+            "lasso" -> Screen.Lasso(File(l[1]))
+            "detail" -> Screen.Detail(l[1])
+            "viewer" -> Screen.Viewer(File(l[1]))
+            else -> Screen.Home
+        }
+    },
+)
+
+/** Saves a nullable [File] (the pending camera target) as its path. */
+private val FileSaver: Saver<File?, String> = Saver(
+    save = { it?.absolutePath ?: "" },
+    restore = { if (it.isEmpty()) null else File(it) },
+)
+
 @Composable
-fun ClipperApp() {
+fun ClipperApp(
+    sharedImageUri: Uri? = null,
+    onSharedImageHandled: () -> Unit = {},
+) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val vm: ClippingsViewModel = viewModel()
     val clippings by vm.clippings.collectAsState()
     val userEmail by vm.authEmail.collectAsState()
@@ -166,8 +232,10 @@ fun ClipperApp() {
             vm.clearAuthError()
         }
     }
-    var pendingFile by remember { mutableStateOf<File?>(null) }
-    var screen: Screen by remember { mutableStateOf(Screen.Home) }
+    var pendingFile by rememberSaveable(stateSaver = FileSaver) { mutableStateOf<File?>(null) }
+    var screen: Screen by rememberSaveable(stateSaver = ScreenSaver) {
+        mutableStateOf(Screen.Home)
+    }
 
     // Whenever we land back on the library, reconcile the DB with disk and analyze new clippings.
     // This covers every "saved" path: capture-back, crop-back, and lasso-Done.
@@ -197,6 +265,30 @@ fun ClipperApp() {
         ActivityResultContracts.RequestPermission()
     ) { granted -> if (granted) startCapture() }
 
+    // Imports an image from a content URI (gallery pick or share) into a clipping file, then routes
+    // to Preview so it can be cropped/lassoed and analyzed exactly like a camera capture.
+    fun beginClippingFrom(uri: Uri) {
+        scope.launch {
+            val file = withContext(Dispatchers.IO) { importImageToClipping(context, uri) }
+            if (file != null) {
+                screen = Screen.Preview(file)
+            } else {
+                Toast.makeText(context, "Couldn't open that image", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri -> if (uri != null) beginClippingFrom(uri) }
+
+    // An image shared in from another app: import and preview it (once per new share).
+    LaunchedEffect(sharedImageUri) {
+        val uri = sharedImageUri ?: return@LaunchedEffect
+        beginClippingFrom(uri)
+        onSharedImageHandled()
+    }
+
     when (val s = screen) {
         Screen.Home -> HomeScreen(
             clippings = clippings,
@@ -209,6 +301,11 @@ fun ClipperApp() {
                 ) == PackageManager.PERMISSION_GRANTED
                 if (granted) startCapture()
                 else permLauncher.launch(Manifest.permission.CAMERA)
+            },
+            onPickPhoto = {
+                galleryLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                )
             },
             onOpen = { clipping -> screen = Screen.Detail(clipping.file.name) },
             onDelete = { toDelete -> vm.delete(toDelete) },
@@ -301,6 +398,7 @@ internal fun HomeScreen(
     userEmail: String?,
     userName: String?,
     onTakePhoto: () -> Unit,
+    onPickPhoto: () -> Unit = {},
     onOpen: (Clipping) -> Unit,
     onDelete: (List<File>) -> Unit,
     onExport: (Uri) -> Unit,
@@ -406,7 +504,7 @@ internal fun HomeScreen(
         drawerContent = {
             ModalDrawerSheet {
                 Text(
-                    "Paper Clipper",
+                    "Paper Clipper AI",
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(16.dp),
                 )
@@ -562,17 +660,24 @@ internal fun HomeScreen(
             }
         },
         bottomBar = {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Button(
                     onClick = onTakePhoto,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.weight(1f),
                 ) {
                     Text("Take a photo")
+                }
+                OutlinedButton(
+                    onClick = onPickPhoto,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Choose photo")
                 }
             }
         },
@@ -648,11 +753,6 @@ internal fun HomeScreen(
                         ) {
                             if (matchField != null) {
                                 Text(
-                                    text = "Match",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = Color(0xFFFFE082),
-                                )
-                                Text(
                                     text = searchSnippet(matchField, q),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color.White,
@@ -660,8 +760,13 @@ internal fun HomeScreen(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             } else {
+                                // For an analyzed clipping show its AI heading as the label; fall
+                                // back to the status word ("Summary"/"Analyzing…"/"Analysis failed").
+                                val label = clipping.heading
+                                    ?.takeIf { it.isNotBlank() && clipping.status == ClippingStatus.SUCCESS }
+                                    ?: statusLabel(clipping.status)
                                 Text(
-                                    text = statusLabel(clipping.status),
+                                    text = label,
                                     style = MaterialTheme.typography.labelMedium,
                                     color = Color.White,
                                 )
@@ -894,6 +999,7 @@ internal fun DetailScreen(
     onDeleteComment: (Long) -> Unit,
     onOpenImage: () -> Unit,
 ) {
+    val context = LocalContext.current
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
@@ -904,6 +1010,14 @@ internal fun DetailScreen(
                         Icon(
                             painter = painterResource(R.drawable.ic_close),
                             contentDescription = "Back",
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { shareClipping(context, clipping) }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_share),
+                            contentDescription = "Share",
                         )
                     }
                 },
@@ -954,13 +1068,16 @@ internal fun DetailScreen(
                 }
                 ClippingStatus.SUCCESS -> {
                     if (!clipping.summary.isNullOrBlank()) {
-                        Text("Summary", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            clipping.heading?.takeIf { it.isNotBlank() } ?: "Summary",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
                         SelectionContainer {
                             Text(clipping.summary, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                     if (!clipping.extractedText.isNullOrBlank()) {
-                        Text("Extracted text", style = MaterialTheme.typography.titleMedium)
+                        Text("Article", style = MaterialTheme.typography.titleMedium)
                         SelectionContainer {
                             Text(clipping.extractedText, style = MaterialTheme.typography.bodyMedium)
                         }
@@ -1383,6 +1500,39 @@ private fun applyExifOrientation(file: File, bitmap: Bitmap): Bitmap {
     }
     return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
 }
+
+/** Shares the clipping image plus its summary text to other apps via the system share sheet. */
+private fun shareClipping(context: Context, clipping: Clipping) {
+    val uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        clipping.file,
+    )
+    val text = clipping.summary?.takeIf { it.isNotBlank() }
+        ?: clipping.extractedText?.takeIf { it.isNotBlank() }
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = mimeTypeFor(clipping.file)
+        putExtra(Intent.EXTRA_STREAM, uri)
+        if (text != null) putExtra(Intent.EXTRA_TEXT, text)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(send, "Share clipping"))
+}
+
+/**
+ * Copies an image referenced by a content [uri] (from the photo picker or a share intent) into a
+ * new clipping file on disk. Returns the file, or null if the image couldn't be read. Bytes are
+ * copied verbatim so any JPEG EXIF orientation is preserved for the Preview/Crop/Lasso screens.
+ */
+private fun importImageToClipping(context: Context, uri: Uri): File? = runCatching {
+    val isPng = context.contentResolver.getType(uri)?.contains("png", ignoreCase = true) == true
+    val ext = if (isPng) "png" else "jpg"
+    val file = File(clippingsDir(context), "clipping_${System.currentTimeMillis()}.$ext")
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        file.outputStream().use { input.copyTo(it) }
+    } ?: return@runCatching null
+    file
+}.getOrNull()
 
 private fun newClippingTarget(context: Context): Pair<File, Uri> {
     val file = File(clippingsDir(context), "clipping_${System.currentTimeMillis()}.jpg")
