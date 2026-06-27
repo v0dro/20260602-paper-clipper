@@ -11,6 +11,7 @@ struct DetailView: View {
     @State private var vm: ClippingsViewModel?
     @State private var newTag = ""
     @State private var newComment = ""
+    @State private var showViewer = false
 
     var body: some View {
         ScrollView {
@@ -20,21 +21,29 @@ struct DetailView: View {
                 } placeholder: {
                     Color.secondary.opacity(0.2).frame(height: 220)
                 }
+                .frame(maxHeight: 240)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .contentShape(Rectangle())
+                .onTapGesture { showViewer = true }
+                .accessibilityLabel("Clipping image (tap to zoom)")
+
+                Text("Tap the image to view full screen and zoom")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
 
                 switch clipping.status {
                 case .pending, .processing:
-                    HStack { ProgressView(); Text("Analyzing with the server…") }
+                    HStack { ProgressView(); Text("Analyzing with Gemini…") }
                 case .error:
                     Text("Analysis failed").font(.headline)
                     Text(clipping.errorMessage ?? "Unknown error")
                     Button("Retry") { vm?.retry(clipping) }
                 case .success:
-                    if let s = clipping.summary, !s.isEmpty {
+                    if let s = clipping.summary, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text("Summary").font(.headline)
                         Text(s).textSelection(.enabled)
                     }
-                    if let t = clipping.extractedText, !t.isEmpty {
+                    if let t = clipping.extractedText, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text("Extracted text").font(.headline)
                         Text(t).textSelection(.enabled)
                     }
@@ -49,6 +58,11 @@ struct DetailView: View {
         }
         .navigationTitle("Clipping")
         .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(isPresented: $showViewer) {
+            FullScreenImageView(imageURL: ClippingStore.fileURL(clipping.fileName)) {
+                showViewer = false
+            }
+        }
         .task { if vm == nil { vm = ClippingsViewModel(context: context) } }
     }
 
@@ -73,9 +87,12 @@ struct DetailView: View {
             HStack {
                 TextField("New tag", text: $newTag)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("newTagField")
                 Button("Add") {
                     vm?.createAndAssignTag(named: newTag, to: clipping); newTag = ""
-                }.disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                .accessibilityIdentifier("addTagButton")
+                .disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
     }
@@ -86,15 +103,18 @@ struct DetailView: View {
             HStack {
                 TextField("Add a comment", text: $newComment)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("newCommentField")
                 Button("Add") {
                     vm?.addComment(newComment, to: clipping); newComment = ""
-                }.disabled(newComment.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                .accessibilityIdentifier("addCommentButton")
+                .disabled(newComment.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             ForEach(clipping.comments.sorted { $0.createdAt > $1.createdAt }) { comment in
                 HStack(alignment: .top) {
                     VStack(alignment: .leading) {
                         Text(comment.text)
-                        Text(comment.createdAt, style: .date)
+                        Text(comment.createdAt.formatted(date: .abbreviated, time: .shortened))
                             .font(.caption2).foregroundStyle(.secondary)
                     }
                     Spacer()

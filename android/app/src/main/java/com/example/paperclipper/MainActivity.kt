@@ -248,7 +248,7 @@ fun ClipperApp() {
             CropScreen(
                 file = s.file,
                 onCancel = { screen = Screen.Preview(s.file) },
-                onCropped = { cropped -> screen = Screen.Preview(cropped) },
+                onCropped = { screen = Screen.Home },
             )
         }
         is Screen.Lasso -> {
@@ -1129,6 +1129,16 @@ private fun CropScreen(
     val scope = rememberCoroutineScope()
     val state = rememberCropifyState()
 
+    // Cropify decodes the JPEG with BitmapFactory, which ignores the EXIF orientation
+    // tag — so handing it the raw file shows (and then saves) camera photos rotated
+    // relative to the Preview screen, where Coil honours EXIF. Decode an already-upright
+    // bitmap ourselves (decodeSampledBitmap applies the EXIF rotation) and feed Cropify's
+    // in-memory overload, mirroring how the Lasso screen solves the same problem.
+    val image by produceState<ImageBitmap?>(initialValue = null, file) {
+        value = withContext(Dispatchers.IO) { decodeSampledBitmap(file, 2048)?.asImageBitmap() }
+        if (value == null) onCancel()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1142,27 +1152,36 @@ private fun CropScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Button(onClick = onCancel) { Text("Cancel") }
-            Button(onClick = { state.crop() }) { Text("Done") }
+            Button(onClick = { if (image != null) state.crop() }) { Text("Done") }
         }
         // The crop area is given its own region below the buttons and inset from
         // the screen edges so all four corner handles stay reachable to drag-resize.
-        Cropify(
-            uri = Uri.fromFile(file),
-            state = state,
-            onImageCropped = { cropped: ImageBitmap ->
-                scope.launch {
-                    val out = saveCrop(context, cropped)
-                    file.delete()
-                    onCropped(out)
-                }
-            },
-            onFailedToLoadImage = { onCancel() },
+        Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(24.dp),
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            val img = image
+            if (img == null) {
+                CircularProgressIndicator(color = Color.White)
+            } else {
+                Cropify(
+                    bitmap = img,
+                    state = state,
+                    onImageCropped = { cropped: ImageBitmap ->
+                        scope.launch {
+                            val out = saveCrop(context, cropped)
+                            file.delete()
+                            onCropped(out)
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
     }
 }
 

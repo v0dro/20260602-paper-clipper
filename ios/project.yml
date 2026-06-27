@@ -25,9 +25,11 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.paperclipper
-        MARKETING_VERSION: "0.1.0"
+        MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1"   # iPhone
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_VERSION: "5.0"
     info:
       path: PaperClipper/Info.plist
       properties:
@@ -47,3 +49,37 @@ targets:
         product: FirebaseAuth
       - package: GoogleSignIn
         product: GoogleSignIn
+    scheme:
+      testTargets:
+        - PaperClipperTests
+        - PaperClipperUITests
+      gatherCoverageData: false
+
+  PaperClipperTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - PaperClipperTests
+    dependencies:
+      - target: PaperClipper
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PaperClipper.app/PaperClipper"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+  PaperClipperUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - PaperClipperUITests
+    dependencies:
+      - target: PaperClipper
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        TEST_TARGET_NAME: PaperClipper

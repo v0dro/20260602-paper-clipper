@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 /// Processing state of a clipping's AI analysis. Mirrors Android's ClippingStatus.
-enum ClippingStatus: String, Codable {
+enum ClippingStatus: String, Codable, CaseIterable {
     case pending, processing, success, error
 }
 

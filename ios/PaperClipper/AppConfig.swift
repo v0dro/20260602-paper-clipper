@@ -10,4 +10,9 @@ enum AppConfig {
     static var proxyToken: String {
         (Bundle.main.object(forInfoDictionaryKey: "PROXY_TOKEN") as? String) ?? ""
     }
+
+    /// App version string for feedback reports. Mirrors Android's `BuildConfig.VERSION_NAME`.
+    static var appVersion: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? ""
+    }
 }

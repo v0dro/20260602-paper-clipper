@@ -15,6 +15,8 @@ import GoogleSignIn
 @Observable
 final class AuthManager {
     private(set) var email: String?
+    /// Display name of the signed-in user (may be nil even when signed in). Mirrors Android's `displayName`.
+    private(set) var displayName: String?
 
     /// Call once at launch. Configures Firebase only if GoogleService-Info.plist is present.
     func configureIfNeeded() {
@@ -25,6 +27,7 @@ final class AuthManager {
         }
         FirebaseApp.configure()
         email = Auth.auth().currentUser?.email
+        displayName = Auth.auth().currentUser?.displayName
         #endif
     }
 
@@ -51,6 +54,7 @@ final class AuthManager {
             )
             let authResult = try await Auth.auth().signIn(with: credential)
             email = authResult.user.email
+            displayName = authResult.user.displayName
             return nil
         } catch {
             return error.localizedDescription
@@ -66,5 +70,17 @@ final class AuthManager {
         GIDSignIn.sharedInstance.signOut()
         #endif
         email = nil
+        displayName = nil
     }
+}
+
+/// Finds the top-most view controller to present the Google Sign-In chooser from. Mirrors how
+/// Android passes the host Activity to the sign-in launcher.
+@MainActor
+func topViewController() -> UIViewController? {
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    let keyWindow = scenes.flatMap { $0.windows }.first { $0.isKeyWindow }
+    var top = keyWindow?.rootViewController
+    while let presented = top?.presentedViewController { top = presented }
+    return top
 }

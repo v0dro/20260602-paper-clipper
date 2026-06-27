@@ -8,7 +8,17 @@ struct PaperClipperApp: App {
 
     init() {
         do {
+            #if DEBUG
+            if UITestSupport.isActive {
+                // UI tests run against a clean in-memory store (seeded from HomeView's .task).
+                let config = ModelConfiguration(isStoredInMemoryOnly: true)
+                container = try ModelContainer(for: Clipping.self, Tag.self, Comment.self, configurations: config)
+            } else {
+                container = try ModelContainer(for: Clipping.self, Tag.self, Comment.self)
+            }
+            #else
             container = try ModelContainer(for: Clipping.self, Tag.self, Comment.self)
+            #endif
         } catch {
             fatalError("Failed to create SwiftData container: \(error)")
         }

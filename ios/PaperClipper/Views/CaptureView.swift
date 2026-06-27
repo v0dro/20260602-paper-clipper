@@ -1,11 +1,12 @@
 import SwiftUI
 import UIKit
 
-/// Camera capture bridged from UIKit. On capture, writes a JPEG into the clippings dir and calls
-/// back with its file name (nil if cancelled). Mirrors the capture step of Android's flow.
-/// FOUNDATION: straight capture → save. Crop/lasso happen afterward (see CropView/LassoView).
-struct CaptureView: UIViewControllerRepresentable {
-    let onFinished: (String?) -> Void
+/// Camera (or photo library) picker bridged from UIKit. Returns the picked `UIImage` to the capture
+/// flow, which then routes it through Preview → Crop / Select. Mirrors the capture step of Android's
+/// flow (`ActivityResultContracts.TakePicture`).
+struct CameraPicker: UIViewControllerRepresentable {
+    let onImage: (UIImage) -> Void
+    let onCancel: () -> Void
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
@@ -16,32 +17,30 @@ struct CaptureView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ controller: UIImagePickerController, context: Context) {}
 
-    func makeCoordinator() -> Coordinator { Coordinator(onFinished: onFinished) }
+    func makeCoordinator() -> Coordinator { Coordinator(onImage: onImage, onCancel: onCancel) }
 
     final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let onFinished: (String?) -> Void
-        init(onFinished: @escaping (String?) -> Void) { self.onFinished = onFinished }
+        let onImage: (UIImage) -> Void
+        let onCancel: () -> Void
+
+        init(onImage: @escaping (UIImage) -> Void, onCancel: @escaping () -> Void) {
+            self.onImage = onImage
+            self.onCancel = onCancel
+        }
 
         func imagePickerController(
             _ picker: UIImagePickerController,
             didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
         ) {
-            guard let image = info[.originalImage] as? UIImage,
-                  let data = image.jpegData(compressionQuality: 0.92) else {
-                onFinished(nil); return
-            }
-            let fileName = "clipping_\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
-            let url = ClippingStore.fileURL(fileName)
-            do {
-                try data.write(to: url)
-                onFinished(fileName)
-            } catch {
-                onFinished(nil)
+            if let image = info[.originalImage] as? UIImage {
+                onImage(image)
+            } else {
+                onCancel()
             }
         }
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            onFinished(nil)
+            onCancel()
         }
     }
 }
