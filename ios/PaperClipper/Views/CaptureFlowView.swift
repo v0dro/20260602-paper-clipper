@@ -16,7 +16,14 @@ struct CaptureFlowView: View {
         case lasso(String)
     }
 
-    @State private var stage: Stage = .camera
+    @State private var stage: Stage
+
+    /// Starts at the camera by default, or straight at Preview for an already-imported image
+    /// (gallery pick / shared-in), which skips capture but still allows crop/select before saving.
+    init(importedFileName: String? = nil, onFinished: @escaping (_ saved: Bool) -> Void) {
+        self.onFinished = onFinished
+        _stage = State(initialValue: importedFileName.map { Stage.preview($0) } ?? .camera)
+    }
 
     var body: some View {
         switch stage {

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import PhotosUI
 import UIKit
 
 /// The clippings library. Mirrors Android's `HomeScreen`: full-width image cards grouped into date
@@ -17,7 +18,8 @@ struct HomeView: View {
     @State private var sortDescending = true
     @State private var selection: Set<String> = []
 
-    @State private var showCapture = false
+    @State private var captureEntry: CaptureEntry?
+    @State private var pickerItem: PhotosPickerItem?
     @State private var showMenu = false
     @State private var showFilter = false
     @State private var showClearConfirm = false
@@ -42,16 +44,34 @@ struct HomeView: View {
     var body: some View {
         NavigationStack(path: $path) {
             content
-                .navigationTitle(inSelectionMode ? "\(selection.count) selected" : "Paper Clipper")
+                .navigationTitle(inSelectionMode ? "\(selection.count) selected" : "Paper Clipper AI")
                 .navigationBarTitleDisplayMode(.inline)
                 .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search clippings")
                 .navigationDestination(for: Clipping.self) { DetailView(clipping: $0) }
                 .toolbar { toolbarContent }
                 .safeAreaInset(edge: .bottom) { captureBar }
-                .fullScreenCover(isPresented: $showCapture) {
-                    CaptureFlowView { saved in
-                        showCapture = false
+                .fullScreenCover(item: $captureEntry) { entry in
+                    CaptureFlowView(importedFileName: entry.importedFileName) { saved in
+                        captureEntry = nil
                         if saved { vm?.refresh() }
+                    }
+                }
+                .onChange(of: pickerItem) { _, item in
+                    guard let item else { return }
+                    Task {
+                        if let data = try? await item.loadTransferable(type: Data.self),
+                           let name = ClippingStore.importImage(data) {
+                            captureEntry = .imported(name)
+                        } else {
+                            showToast("Couldn't open that image")
+                        }
+                        pickerItem = nil
+                    }
+                }
+                .onOpenURL { url in
+                    // An image opened into the app from another app (share / "Open in").
+                    if let name = ClippingStore.importImage(from: url) {
+                        captureEntry = .imported(name)
                     }
                 }
                 .sheet(isPresented: $showMenu) {
@@ -155,14 +175,23 @@ struct HomeView: View {
     }
 
     private var captureBar: some View {
-        Button { showCapture = true } label: {
-            Text("Take a photo").frame(maxWidth: .infinity)
+        HStack(spacing: 12) {
+            Button { captureEntry = .camera } label: {
+                Text("Take a photo").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .accessibilityIdentifier("takePhotoButton")
+
+            PhotosPicker(selection: $pickerItem, matching: .images) {
+                Text("Choose photo").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .accessibilityIdentifier("choosePhotoButton")
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .accessibilityIdentifier("takePhotoButton")
     }
 
     @ToolbarContentBuilder
@@ -275,17 +304,13 @@ private struct ClippingCard: View {
     @ViewBuilder
     private var caption: some View {
         if let field = matchField {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Match")
-                    .font(.caption).fontWeight(.medium)
-                    .foregroundStyle(Color(red: 1.0, green: 0.878, blue: 0.510))
-                Text(HomeHelpers.attributed(HomeHelpers.searchSnippet(field, query)))
-                    .font(.caption).foregroundStyle(.white)
-                    .lineLimit(3)
-            }
+            Text(HomeHelpers.attributed(HomeHelpers.searchSnippet(field, query)))
+                .font(.caption).foregroundStyle(.white)
+                .lineLimit(3)
         } else {
             VStack(alignment: .leading, spacing: 2) {
-                Text(HomeHelpers.statusLabel(clipping.status))
+                // A successful clipping shows its AI heading; otherwise the status word.
+                Text(HomeHelpers.cardLabel(status: clipping.status, heading: clipping.heading))
                     .font(.caption).fontWeight(.medium).foregroundStyle(.white)
                 if let text = clipping.summary ?? clipping.errorMessage, !text.isEmpty {
                     Text(text).font(.caption).foregroundStyle(.white).lineLimit(2)
@@ -336,7 +361,7 @@ private struct MenuSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Paper Clipper") {
+                Section("Paper Clipper AI") {
                     if let email {
                         Text("Logged in as \(displayName ?? email)")
                             .font(.footnote).foregroundStyle(.secondary)
@@ -457,4 +482,23 @@ struct ShareSheet: UIViewControllerRepresentable {
 struct IdentifiableURL: Identifiable {
     let id = UUID()
     let url: URL
+}
+
+/// How the capture flow was entered: the camera, or an already-imported image (gallery / shared-in)
+/// that starts at the Preview step.
+private enum CaptureEntry: Identifiable {
+    case camera
+    case imported(String)
+
+    var id: String {
+        switch self {
+        case .camera: return "camera"
+        case let .imported(name): return "imported:\(name)"
+        }
+    }
+
+    var importedFileName: String? {
+        if case let .imported(name) = self { return name }
+        return nil
+    }
 }

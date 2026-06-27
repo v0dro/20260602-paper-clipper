@@ -7,7 +7,19 @@ final class AnalyzeClientTests: XCTestCase {
 
     func testParseResultSuccessTrimsBothFields() {
         let result = AnalyzeClient.parseResult(#"{"extractedText":"  hello  ","summary":"  sum  "}"#)
-        XCTAssertEqual(result, .success(extractedText: "hello", summary: "sum"))
+        XCTAssertEqual(result, .success(extractedText: "hello", summary: "sum", heading: ""))
+    }
+
+    func testParseResultParsesAndTrimsHeading() {
+        let result = AnalyzeClient.parseResult(#"{"extractedText":"x","summary":"y","heading":"  Big News  "}"#)
+        XCTAssertEqual(result, .success(extractedText: "x", summary: "y", heading: "Big News"))
+    }
+
+    func testParseResultMissingHeadingDefaultsToEmpty() {
+        XCTAssertEqual(
+            AnalyzeClient.parseResult(#"{"extractedText":"x","summary":"y"}"#),
+            .success(extractedText: "x", summary: "y", heading: "")
+        )
     }
 
     func testParseResultSucceedsWithOnlyOneField() {

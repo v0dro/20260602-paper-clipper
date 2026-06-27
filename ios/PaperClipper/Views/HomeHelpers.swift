@@ -16,6 +16,16 @@ enum HomeHelpers {
         }
     }
 
+    /// The home card's caption label: a successful clipping's AI heading, else the status word.
+    /// Mirrors Android's `clipping.heading?.takeIf { ... SUCCESS } ?: statusLabel(status)`.
+    static func cardLabel(status: ClippingStatus, heading: String?) -> String {
+        if status == .success,
+           let heading, !heading.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return heading
+        }
+        return statusLabel(status)
+    }
+
     /// Formats a date with a `DateFormatter` pattern. Mirrors Android's `fmt`.
     static func fmt(_ pattern: String, _ date: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         let formatter = DateFormatter()

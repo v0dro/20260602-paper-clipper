@@ -5,7 +5,7 @@ SwiftUI app (iOS 17+, SwiftData) that is a **full 1:1 clone of the Android app**
 
 > ✅ Builds, runs and is tested. Verified with Xcode 26.2: `xcodegen generate` → `xcodebuild`
 > **BUILD SUCCEEDED** with the full Firebase/GoogleSignIn package graph; the whole test suite
-> (**55 unit + 6 UI tests**) passes on the iOS 17+ Simulator. Every Android feature is implemented —
+> (**64 unit + 6 UI tests**) passes on the iOS 17+ Simulator. Every Android feature is implemented —
 > capture → preview → crop/lasso, the analyze pipeline, the library (image cards, date sections,
 > search highlighting, multi-select delete, sort filter), detail (tags/comments/zoom), export ZIP,
 > feedback, the sign-in scaffold, and the app icon. See `ANDROID_TO_IOS.md` for the file-by-file map.
@@ -53,9 +53,11 @@ comments, tap-to-zoom).
 
 ## What's implemented
 See **`ANDROID_TO_IOS.md`** — every Android feature is cloned: the data models, the proxy + feedback
-clients, the Firebase/Google sign-in scaffold, the store/analysis pipeline, the library (image cards,
-date sections, search highlighting, multi-select delete, sort filter, menu), capture → crop/lasso,
-the detail screen (tags + comments + full-screen zoom), export ZIP, and the app icon.
+clients, the Firebase/Google sign-in (configured), the store/analysis pipeline (incl. the AI
+`heading`), the library (image cards with the heading label, date sections, search highlighting,
+multi-select delete, sort filter, menu), capture → crop/lasso, **Choose photo** (gallery import),
+**share in** (open/copy an image into the app) and **share out** (Detail share button), the detail
+screen (heading + Article + tags + comments + full-screen zoom), export ZIP, and the app icon.
 
 ## Backends — no changes needed
 This app reuses the existing proxy server and Firebase project as-is. Bundle id is

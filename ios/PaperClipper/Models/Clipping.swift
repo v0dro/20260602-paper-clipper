@@ -15,6 +15,8 @@ final class Clipping {
     var statusRaw: String
     var extractedText: String?
     var summary: String?
+    /// AI-generated short title (<5 words). Nullable; mirrors Android's `heading` column (DB v3).
+    var heading: String?
     var errorMessage: String?
     var model: String?
     var processedAt: Date?

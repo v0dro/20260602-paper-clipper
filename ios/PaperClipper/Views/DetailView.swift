@@ -12,6 +12,25 @@ struct DetailView: View {
     @State private var newTag = ""
     @State private var newComment = ""
     @State private var showViewer = false
+    @State private var showShare = false
+
+    /// The AI heading if present, else the static "Summary" label. Mirrors Android's DetailScreen.
+    private var headingTitle: String {
+        if let h = clipping.heading, !h.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return h
+        }
+        return "Summary"
+    }
+
+    /// Share payload: the image file plus the summary (or article) text, mirroring Android's shareClipping.
+    private var shareItems: [Any] {
+        var items: [Any] = [ClippingStore.fileURL(clipping.fileName)]
+        let summary = clipping.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let article = clipping.extractedText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let text = !summary.isEmpty ? summary : article
+        if !text.isEmpty { items.append(text) }
+        return items
+    }
 
     var body: some View {
         ScrollView {
@@ -40,11 +59,12 @@ struct DetailView: View {
                     Button("Retry") { vm?.retry(clipping) }
                 case .success:
                     if let s = clipping.summary, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text("Summary").font(.headline)
+                        // The AI heading replaces the static "Summary" label (falls back to it).
+                        Text(headingTitle).font(.headline)
                         Text(s).textSelection(.enabled)
                     }
                     if let t = clipping.extractedText, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text("Extracted text").font(.headline)
+                        Text("Article").font(.headline)
                         Text(t).textSelection(.enabled)
                     }
                 }
@@ -58,10 +78,19 @@ struct DetailView: View {
         }
         .navigationTitle("Clipping")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showShare = true } label: { Image(systemName: "square.and.arrow.up") }
+                    .accessibilityLabel("Share")
+            }
+        }
         .fullScreenCover(isPresented: $showViewer) {
             FullScreenImageView(imageURL: ClippingStore.fileURL(clipping.fileName)) {
                 showViewer = false
             }
+        }
+        .sheet(isPresented: $showShare) {
+            ShareSheet(items: shareItems)
         }
         .task { if vm == nil { vm = ClippingsViewModel(context: context) } }
     }

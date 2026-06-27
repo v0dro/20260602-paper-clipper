@@ -37,7 +37,7 @@ targets:
     info:
       path: PaperClipper/Info.plist
       properties:
-        CFBundleDisplayName: Paper Clipper
+        CFBundleDisplayName: Paper Clipper AI
         UILaunchScreen: {}
         NSCameraUsageDescription: "Used to photograph newspaper clippings."
         NSPhotoLibraryUsageDescription: "Used to import clipping photos."
@@ -48,6 +48,15 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLSchemes:
               - $(REVERSED_CLIENT_ID)
+        # Receive images shared/opened from other apps ("Open in / Copy to Paper Clipper AI").
+        # Delivered to the app via .onOpenURL. (Appearing in the top share-sheet row would need a
+        # Share Extension + App Group, which requires a paid Apple Developer team.)
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Image
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.image
     dependencies:
       - package: Firebase
         product: FirebaseAuth

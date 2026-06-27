@@ -13,9 +13,9 @@ enum UITestSupport {
     }
 
     /// Fixed sample clippings shown in UI tests. Public so tests can assert on the same strings.
-    static let samples: [(fileName: String, summary: String, extractedText: String)] = [
-        ("seed_apple.png", "Apple pie recipe wins the county fair", "Apple pie recipe wins the county fair this year."),
-        ("seed_team.png", "Local team clinches the championship", "The local team clinches the championship in overtime."),
+    static let samples: [(fileName: String, heading: String, summary: String, extractedText: String)] = [
+        ("seed_apple.png", "County Fair Win", "Apple pie recipe wins the county fair", "Apple pie recipe wins the county fair this year."),
+        ("seed_team.png", "Championship Clinched", "Local team clinches the championship", "The local team clinches the championship in overtime."),
     ]
 
     @MainActor
@@ -34,6 +34,7 @@ enum UITestSupport {
         for sample in samples {
             try? png.write(to: dir.appendingPathComponent(sample.fileName))
             let clip = Clipping(fileName: sample.fileName, createdAt: created, status: .success)
+            clip.heading = sample.heading
             clip.summary = sample.summary
             clip.extractedText = sample.extractedText
             clip.model = "server"

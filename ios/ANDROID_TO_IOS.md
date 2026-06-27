@@ -49,6 +49,18 @@ Android app. Android sources are under `../android/app/src/main/java/com/example
 | EXIF orientation + downsampling | `ImageProcessing` (`normalizedUp`, `loadDownsampled`) | ✅ |
 | launcher icon (scrapbook + AI sparkles) | `Assets.xcassets/AppIcon` | ✅ recreated 1024px |
 
+## Latest Android features (commit "new features") — ported
+| Android | iOS | Notes |
+|---|---|---|
+| AI `heading` field (DB v3 migration) | `Clipping.heading` (SwiftData lightweight migration — automatic) | parsed in `AnalyzeClient`, stored in `ClippingStore`, shown as the card label + Detail title |
+| Home card label = heading (else status); "Match" label removed | `HomeHelpers.cardLabel` + `ClippingCard` | |
+| Detail: heading as summary title; "Extracted text" → "Article" | `DetailView` | |
+| Detail share button (`shareClipping`) | `DetailView` toolbar → `ShareSheet` (image + summary) | |
+| "Choose photo" gallery import (`PickVisualMedia`) | `PhotosPicker` → `ClippingStore.importImage` → capture flow at Preview | |
+| Share-in (`ACTION_SEND` image) | `CFBundleDocumentTypes` (`public.image`) + `.onOpenURL` → import → Preview | full system-share-sheet row needs a Share Extension + App Group (paid team); "Open in / Copy to" works on the free team |
+| Server `/analyze` returns `heading` (+ server-side article cleanup) | `AnalyzeClient` parses `heading` | cleanup is server-side, transparent to the client |
+| "Paper Clipper" → "Paper Clipper AI" | display name, nav title, menu header, export title | |
+
 ## Accepted platform mappings (not a regression)
 - **Network timeouts.** Android uses separate `connectTimeout`/`readTimeout` (`HttpURLConnection`).
   iOS `URLRequest.timeoutInterval` is a single value, set to the Android **read** timeout (90s for

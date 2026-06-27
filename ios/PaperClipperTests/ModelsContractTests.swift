@@ -15,6 +15,7 @@ final class ModelsContractTests: XCTestCase {
         XCTAssertEqual(clip.status, .pending)
         XCTAssertNil(clip.extractedText)
         XCTAssertNil(clip.summary)
+        XCTAssertNil(clip.heading)
         XCTAssertNil(clip.errorMessage)
         XCTAssertNil(clip.model)
         XCTAssertNil(clip.processedAt)

@@ -2,7 +2,7 @@ import Foundation
 
 /// Result of analyzing a clipping via the backend proxy. Mirrors Android's `GeminiResult`.
 enum AnalyzeResult: Equatable {
-    case success(extractedText: String, summary: String)
+    case success(extractedText: String, summary: String, heading: String)
     case failure(String)
 }
 
@@ -60,10 +60,12 @@ enum AnalyzeClient {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let summary = (json["summary"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let heading = (json["heading"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if extracted.isEmpty && summary.isEmpty {
             return .failure("Server returned no text")
         }
-        return .success(extractedText: extracted, summary: summary)
+        return .success(extractedText: extracted, summary: summary, heading: heading)
     }
 
     /// Prefers the server's `error` field, otherwise falls back to the HTTP code. Mirrors

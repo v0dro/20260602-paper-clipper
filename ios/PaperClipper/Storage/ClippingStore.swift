@@ -45,6 +45,24 @@ enum ClippingStore {
         try? FileManager.default.removeItem(at: fileURL(name))
     }
 
+    /// Imports image bytes (from the photo picker or a share/open-in) into a new clipping file,
+    /// preserving the bytes verbatim so JPEG EXIF orientation survives. PNG is detected by its magic
+    /// header; everything else is treated as JPEG. Mirrors Android's `importImageToClipping`.
+    static func importImage(_ data: Data) -> String? {
+        let isPNG = data.starts(with: [0x89, 0x50, 0x4E, 0x47])
+        let name = newFileName(ext: isPNG ? "png" : "jpg")
+        return (try? save(data, name: name)) != nil ? name : nil
+    }
+
+    /// Imports an image referenced by a file URL (e.g. from `.onOpenURL` / "Open in"). Returns the
+    /// new clipping file name, or nil if it couldn't be read.
+    static func importImage(from url: URL) -> String? {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return importImage(data)
+    }
+
     /// The clipping image files (jpg/png) on disk, newest first. Mirrors `listClippingFiles`.
     static func imageFiles() -> [URL] {
         let urls = (try? FileManager.default.contentsOfDirectory(
@@ -109,14 +127,16 @@ enum ClippingStore {
 
             let result = await analyze(data, mimeType(for: clip.fileName), userId)
             switch result {
-            case let .success(extractedText, summary):
+            case let .success(extractedText, summary, heading):
                 clip.extractedText = extractedText
                 clip.summary = summary
+                clip.heading = heading.isEmpty ? nil : heading
                 clip.errorMessage = nil
                 clip.status = .success
             case let .failure(message):
                 clip.extractedText = nil
                 clip.summary = nil
+                clip.heading = nil
                 clip.errorMessage = message
                 clip.status = .error
             }

@@ -11,7 +11,7 @@ final class ClippingStoreTests: XCTestCase {
     private var container: ModelContainer!
     private var context: ModelContext { container.mainContext }
 
-    private let stubSuccess: AnalyzeFunction = { _, _, _ in .success(extractedText: "extracted", summary: "summary") }
+    private let stubSuccess: AnalyzeFunction = { _, _, _ in .success(extractedText: "extracted", summary: "summary", heading: "Big Headline") }
     private let stubFailure: AnalyzeFunction = { _, _, _ in .failure("boom") }
 
     override func setUpWithError() throws {
@@ -39,6 +39,18 @@ final class ClippingStoreTests: XCTestCase {
         XCTAssertEqual(rows[0].status, .success)
         XCTAssertEqual(rows[0].extractedText, "extracted")
         XCTAssertEqual(rows[0].summary, "summary")
+        XCTAssertEqual(rows[0].heading, "Big Headline")
+    }
+
+    func testReconcileEmptyHeadingStoredAsNil() async throws {
+        SwiftDataTestSupport.writeImage("nohead.jpg")
+        let stub: AnalyzeFunction = { _, _, _ in .success(extractedText: "x", summary: "y", heading: "") }
+
+        await ClippingStore.reconcileAndProcess(context: context, analyze: stub)
+
+        let row = try XCTUnwrap(try allClippings().first)
+        XCTAssertEqual(row.status, .success)
+        XCTAssertNil(row.heading)
     }
 
     func testReconcileAnalysisErrorIsRecorded() async throws {

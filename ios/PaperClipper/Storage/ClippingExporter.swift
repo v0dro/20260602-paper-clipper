@@ -100,13 +100,13 @@ enum ClippingExporter {
 
         var html = ""
         html += "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
-        html += "<title>Paper Clipper export</title><style>"
+        html += "<title>Paper Clipper AI export</title><style>"
         html += "body{font-family:sans-serif;margin:24px;background:#f5f5f5}"
         html += ".c{background:#fff;border-radius:8px;padding:16px;margin:0 0 16px;box-shadow:0 1px 3px rgba(0,0,0,.15)}"
         html += "img{max-width:100%;border-radius:6px}.tag{display:inline-block;background:#e0e0ff;"
         html += "border-radius:12px;padding:2px 10px;margin:2px;font-size:13px}"
         html += "h3{margin:8px 0 4px}.meta{color:#666;font-size:13px}pre{white-space:pre-wrap}</style></head><body>"
-        html += "<h1>Paper Clipper — \(items.count) clippings</h1>"
+        html += "<h1>Paper Clipper AI — \(items.count) clippings</h1>"
 
         for item in items {
             html += "<div class=\"c\">"

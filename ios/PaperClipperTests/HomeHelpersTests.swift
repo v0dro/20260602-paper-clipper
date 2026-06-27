@@ -38,6 +38,18 @@ final class HomeHelpersTests: XCTestCase {
         XCTAssertEqual(HomeHelpers.statusLabel(.error), "Analysis failed")
     }
 
+    // MARK: - cardLabel
+
+    func testCardLabelUsesHeadingForSuccessElseStatus() {
+        XCTAssertEqual(HomeHelpers.cardLabel(status: .success, heading: "Big News"), "Big News")
+        // Blank / nil heading falls back to the status word, even for success.
+        XCTAssertEqual(HomeHelpers.cardLabel(status: .success, heading: nil), "Summary")
+        XCTAssertEqual(HomeHelpers.cardLabel(status: .success, heading: "   "), "Summary")
+        // Non-success ignores the heading.
+        XCTAssertEqual(HomeHelpers.cardLabel(status: .pending, heading: "Big News"), "Analyzing…")
+        XCTAssertEqual(HomeHelpers.cardLabel(status: .error, heading: "Big News"), "Analysis failed")
+    }
+
     // MARK: - fmt
 
     func testFmtFormatsKnownPatterns() {

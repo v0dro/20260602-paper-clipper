@@ -5,6 +5,7 @@ import XCTest
 /// (HomeScreen / DetailScreen / FilterDialog) at the app level.
 final class PaperClipperUITests: XCTestCase {
 
+    private let appleHeading = "County Fair Win"
     private let appleSummary = "Apple pie recipe wins the county fair"
     private let teamSummary = "Local team clinches the championship"
 
@@ -23,11 +24,12 @@ final class PaperClipperUITests: XCTestCase {
         NSPredicate(format: "label CONTAINS %@", substring)
     }
 
-    func testLaunchShowsSeededLibraryAndCaptureButton() {
+    func testLaunchShowsSeededLibraryAndCaptureButtons() {
         let app = launchSeeded()
         XCTAssertTrue(app.staticTexts[appleSummary].waitForExistence(timeout: 15))
         XCTAssertTrue(app.staticTexts[teamSummary].exists)
         XCTAssertTrue(app.buttons["takePhotoButton"].exists)
+        XCTAssertTrue(app.buttons["choosePhotoButton"].exists)
     }
 
     func testSearchFiltersOutNonMatchingClippings() {
@@ -43,15 +45,17 @@ final class PaperClipperUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts[teamSummary].exists)
     }
 
-    func testOpenDetailShowsSummaryAndExtractedText() {
+    func testOpenDetailShowsHeadingAndArticle() {
         let app = launchSeeded()
         let apple = app.staticTexts[appleSummary]
         XCTAssertTrue(apple.waitForExistence(timeout: 15))
         apple.tap()
 
-        XCTAssertTrue(app.staticTexts["Summary"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Extracted text"].exists)
+        // The AI heading replaces the "Summary" label; "Extracted text" is now "Article".
+        XCTAssertTrue(app.staticTexts[appleHeading].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Article"].exists)
         XCTAssertTrue(app.staticTexts.element(matching: text(containing: "Apple pie recipe wins the county fair this year")).exists)
+        XCTAssertTrue(app.buttons["Share"].exists)
     }
 
     func testAddTagAndComment() {
