@@ -33,6 +33,13 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 PROXY_TOKEN = os.getenv("PROXY_TOKEN", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
+# Token pricing (USD per 1M tokens) used to estimate per-request cost from Gemini's usageMetadata.
+# Defaults are gemini-2.5-flash list prices ($0.30 input / $2.50 output per 1M). Override via env
+# when changing GEMINI_MODEL. candidatesTokenCount already includes thinking tokens on the Gemini
+# Developer API, so output cost covers thoughts without double-counting.
+GEMINI_PRICE_INPUT_PER_M = float(os.getenv("GEMINI_PRICE_INPUT_PER_M", "0.30"))
+GEMINI_PRICE_OUTPUT_PER_M = float(os.getenv("GEMINI_PRICE_OUTPUT_PER_M", "2.50"))
+
 # Feedback is saved as .eml files in a local folder on this machine (no external email sent).
 FEEDBACK_DIR = Path(os.getenv("FEEDBACK_DIR", "feedback")).expanduser()
 FEEDBACK_TO = os.getenv("FEEDBACK_TO", "developer").strip()
@@ -79,12 +86,23 @@ def usage_increment(user_id: str, day: str) -> None:
 # console only gets a concise one-liner.
 _log_lock = threading.Lock()
 
-# Columns persisted per request, in INSERT order.
+# Columns persisted per request, in INSERT order. The token/cost columns are populated for
+# /analyze from Gemini's usageMetadata (summed across the transcription + cleanup passes).
 _LOG_COLUMNS = (
     "ts", "endpoint", "method", "path", "user_id", "client_ip", "status", "outcome",
     "latency_ms", "request_bytes", "mime_type", "app_version", "extracted_text", "summary",
     "feedback_message", "email", "error",
+    "prompt_tokens", "output_tokens", "total_tokens", "thoughts_tokens", "cached_tokens",
+    "image_tokens", "gemini_calls", "model_version", "est_cost_usd",
 )
+
+# Columns added after the table first shipped — applied to existing DBs via ALTER TABLE so an old
+# usage.db gains them without a manual migration.
+_LOG_ADDED_COLUMNS = {
+    "prompt_tokens": "INTEGER", "output_tokens": "INTEGER", "total_tokens": "INTEGER",
+    "thoughts_tokens": "INTEGER", "cached_tokens": "INTEGER", "image_tokens": "INTEGER",
+    "gemini_calls": "INTEGER", "model_version": "TEXT", "est_cost_usd": "REAL",
+}
 
 
 def _log_conn() -> sqlite3.Connection:
@@ -95,8 +113,15 @@ def _log_conn() -> sqlite3.Connection:
         "method TEXT, path TEXT, user_id TEXT, client_ip TEXT, status INTEGER NOT NULL, "
         "outcome TEXT NOT NULL, latency_ms INTEGER, request_bytes INTEGER, mime_type TEXT, "
         "app_version TEXT, extracted_text TEXT, summary TEXT, feedback_message TEXT, "
-        "email TEXT, error TEXT)"
+        "email TEXT, error TEXT, prompt_tokens INTEGER, output_tokens INTEGER, "
+        "total_tokens INTEGER, thoughts_tokens INTEGER, cached_tokens INTEGER, "
+        "image_tokens INTEGER, gemini_calls INTEGER, model_version TEXT, est_cost_usd REAL)"
     )
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(request_log)")}
+    for col, col_type in _LOG_ADDED_COLUMNS.items():
+        if col not in existing:
+            conn.execute(f"ALTER TABLE request_log ADD COLUMN {col} {col_type}")
+    conn.commit()
     return conn
 
 
@@ -196,10 +221,18 @@ async def log_requests(request: Request, call_next):
         }
         row.update(extra)  # handler details win (precise user_id, AI output, feedback, error)
         log_request(**row)
+        tokens = row.get("total_tokens")
+        cost = row.get("est_cost_usd")
+        usage_str = (
+            f" tokens={tokens} (in={row.get('prompt_tokens')} out={row.get('output_tokens')}"
+            f" img={row.get('image_tokens')}) calls={row.get('gemini_calls')} cost=${cost}"
+            if tokens is not None
+            else ""
+        )
         print(
             f"[req] {row['ts']} {row['method']} {row['path']} "
             f"user={row.get('user_id') or '-'} ip={client_ip or '-'} "
-            f"status={status} outcome={outcome} {latency_ms}ms",
+            f"status={status} outcome={outcome} {latency_ms}ms{usage_str}",
             flush=True,
         )
 
@@ -317,6 +350,7 @@ async def analyze(
 
     # --- call Gemini, retrying transient failures (5xx / 429 / empty responses) ---
     last_error = "Gemini request failed"
+    usage = _new_usage_acc()  # token usage across every Gemini call this request makes
     for attempt in range(1, 4):
         try:
             async with httpx.AsyncClient(timeout=90.0) as client:
@@ -341,13 +375,18 @@ async def analyze(
                 break
             continue
 
+        # The call succeeded, so Gemini spent tokens — record them even if we ultimately reject the
+        # result (no-text / unparseable). This makes the audit log reflect true cost per request.
+        _accumulate_usage(usage, resp.text)
+
         extracted, summary, heading, has_text = _parse_gemini(resp.text)
 
         # The model determined the image has no transcribable text (e.g. a photo of a car, not a
         # clipping). That's a definitive verdict, not a transient failure: don't retry and don't
-        # bill it — return a clear 422 so the app tells the user instead of saving an invented
-        # article.
+        # count it against the daily cap — but still log the tokens it cost. Return a clear 422 so
+        # the app tells the user instead of saving an invented article.
         if has_text is False:
+            _record_usage(request, usage)
             request.state.log_extra["error"] = "no_text_detected"
             print(f"[analyze] attempt {attempt}: no text detected in image", flush=True)
             raise HTTPException(
@@ -365,21 +404,33 @@ async def analyze(
 
         # Second pass: rewrite the raw transcription into a clean, presentable article. The raw
         # text is thrown away — only the cleaned article is returned. Falls back to the raw text
-        # if the cleanup call fails, so a clipping is never left with no body.
-        article = (await _cleanup_article(extracted)) or extracted if extracted else ""
+        # if the cleanup call fails, so a clipping is never left with no body. Its tokens count too.
+        if extracted:
+            cleaned, cleanup_raw = await _cleanup_article(extracted)
+            _accumulate_usage(usage, cleanup_raw)
+            article = cleaned or extracted
+        else:
+            article = ""
 
         usage_increment(user_id, today)  # count only successful analyses
+        _record_usage(request, usage)
         request.state.log_extra.update(extracted_text=article, summary=summary)
         return AnalyzeResponse(extractedText=article, summary=summary, heading=heading)
 
+    _record_usage(request, usage)  # log tokens spent even when all attempts failed
     request.state.log_extra["error"] = last_error
     raise HTTPException(status_code=502, detail=last_error)
 
 
-async def _cleanup_article(raw_text: str) -> str:
-    """Second Gemini pass: rewrite raw transcription into a clean article. '' if the call fails."""
+async def _cleanup_article(raw_text: str) -> tuple[str, str]:
+    """Second Gemini pass: rewrite raw transcription into a clean article.
+
+    Returns (cleaned_article, raw_response_json). The raw response is returned even when the body
+    can't be parsed, so the caller can still bill the tokens it consumed; it's '' only when no
+    Gemini call was made (no key / network error / HTTP error).
+    """
     if not GEMINI_API_KEY:
-        return ""
+        return "", ""
     body = {
         "contents": [{"parts": [{"text": f"{CLEANUP_PROMPT}\n\n---\n{raw_text}"}]}],
         "generationConfig": {
@@ -396,16 +447,16 @@ async def _cleanup_article(raw_text: str) -> str:
             )
     except httpx.HTTPError as exc:
         print(f"[cleanup] network error: {exc}", flush=True)
-        return ""
+        return "", ""
     if resp.status_code // 100 != 2:
         print(f"[cleanup] HTTP {resp.status_code}: {resp.text[:200]}", flush=True)
-        return ""
+        return "", ""
     try:
         data = json.loads(resp.text)
-        return str(data["candidates"][0]["content"]["parts"][0]["text"]).strip()
+        return str(data["candidates"][0]["content"]["parts"][0]["text"]).strip(), resp.text
     except (json.JSONDecodeError, KeyError, IndexError, TypeError):
         print(f"[cleanup] unparseable response: {resp.text[:200]}", flush=True)
-        return ""
+        return "", resp.text
 
 
 def _parse_gemini(raw: str) -> tuple[str | None, str, str, bool | None]:
@@ -477,6 +528,81 @@ def _json_bool_field(text: str, name: str) -> bool | None:
     if not match:
         return None
     return match.group(1).lower() == "true"
+
+
+def _usage_from_response(raw: str) -> dict:
+    """Pulls token usage (and the resolved model version) from a Gemini response. {} if absent."""
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    meta = data.get("usageMetadata") or {}
+
+    def modality(details, name: str) -> int:
+        return sum(
+            int(d.get("tokenCount", 0) or 0)
+            for d in (details or [])
+            if str(d.get("modality", "")).upper() == name
+        )
+
+    return {
+        "prompt_tokens": int(meta.get("promptTokenCount", 0) or 0),
+        "output_tokens": int(meta.get("candidatesTokenCount", 0) or 0),
+        "total_tokens": int(meta.get("totalTokenCount", 0) or 0),
+        "thoughts_tokens": int(meta.get("thoughtsTokenCount", 0) or 0),
+        "cached_tokens": int(meta.get("cachedContentTokenCount", 0) or 0),
+        "image_tokens": modality(meta.get("promptTokensDetails"), "IMAGE"),
+        "model_version": data.get("modelVersion"),
+    }
+
+
+_USAGE_SUM_KEYS = (
+    "prompt_tokens", "output_tokens", "total_tokens",
+    "thoughts_tokens", "cached_tokens", "image_tokens",
+)
+
+
+def _new_usage_acc() -> dict:
+    acc = {k: 0 for k in _USAGE_SUM_KEYS}
+    acc["gemini_calls"] = 0
+    acc["model_version"] = None
+    return acc
+
+
+def _accumulate_usage(acc: dict, raw: str) -> None:
+    """Adds one Gemini response's token usage into the per-request accumulator [acc]."""
+    usage = _usage_from_response(raw)
+    if not usage:
+        return
+    for key in _USAGE_SUM_KEYS:
+        acc[key] += usage.get(key, 0)
+    acc["gemini_calls"] += 1
+    if usage.get("model_version"):
+        acc["model_version"] = usage["model_version"]
+
+
+def _cost_usd(prompt_tokens: int, output_tokens: int) -> float:
+    """Estimated USD cost from input/output token counts and the configured per-1M prices."""
+    return round(
+        prompt_tokens / 1_000_000 * GEMINI_PRICE_INPUT_PER_M
+        + output_tokens / 1_000_000 * GEMINI_PRICE_OUTPUT_PER_M,
+        6,
+    )
+
+
+def _record_usage(request: Request, acc: dict) -> None:
+    """Merges the accumulated token usage + estimated cost into the request's audit-log row."""
+    request.state.log_extra.update(
+        prompt_tokens=acc["prompt_tokens"],
+        output_tokens=acc["output_tokens"],
+        total_tokens=acc["total_tokens"],
+        thoughts_tokens=acc["thoughts_tokens"],
+        cached_tokens=acc["cached_tokens"],
+        image_tokens=acc["image_tokens"],
+        gemini_calls=acc["gemini_calls"],
+        model_version=acc.get("model_version"),
+        est_cost_usd=_cost_usd(acc["prompt_tokens"], acc["output_tokens"]),
+    )
 
 
 def _gemini_error(raw: str, status: int) -> str:

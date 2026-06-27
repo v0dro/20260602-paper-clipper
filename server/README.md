@@ -95,15 +95,33 @@ Every request is recorded — one row per request — in a `request_log` table i
 file as the usage counters (`USAGE_DB`, default `usage.db`, gitignored). Each row holds the time,
 endpoint, **user id** (`X-User-Id`), caller IP (from the Cloudflare forwarded headers), HTTP status,
 outcome, latency, request size, and — for `/analyze` — the **AI response** (`extracted_text`,
-`summary`); for `/feedback` the message, email and app version; plus any error. The console
-(journald) gets only a concise one-liner (`[req] …`); the full detail (incl. AI output / email)
-stays in the local DB.
+`summary`) plus **token usage & estimated cost** (see below); for `/feedback` the message, email and
+app version; plus any error. The console (journald) gets only a concise one-liner (`[req] …`, now
+including `tokens=… cost=$…`); the full detail (incl. AI output / email) stays in the local DB.
+
+### Token usage & cost per request
+
+For each `/analyze` request the server reads Gemini's `usageMetadata` from **every** Gemini call it
+makes (the transcription pass **and** the cleanup pass) and stores the summed counts:
+`prompt_tokens`, `output_tokens`, `total_tokens`, `thoughts_tokens`, `cached_tokens`,
+`image_tokens` (image-modality share of the prompt), `gemini_calls` (usually 2), `model_version`,
+and `est_cost_usd`. Cost is computed from `GEMINI_PRICE_INPUT_PER_M` / `GEMINI_PRICE_OUTPUT_PER_M`
+(default gemini-2.5-flash list prices). Tokens are recorded even when the result is rejected
+(no-text `422`) or fails (`502`), so the log reflects true spend.
 
 Inspect it with:
 ```bash
+# recent requests
 sqlite3 usage.db "SELECT ts, endpoint, user_id, status, outcome, latency_ms FROM request_log ORDER BY id DESC LIMIT 20;"
-sqlite3 usage.db "SELECT ts, user_id, substr(summary,1,80) FROM request_log WHERE endpoint='analyze' AND outcome='success' ORDER BY id DESC LIMIT 10;"
+# per-request tokens + cost
+sqlite3 usage.db "SELECT ts, user_id, gemini_calls, prompt_tokens, output_tokens, total_tokens, est_cost_usd FROM request_log WHERE endpoint='analyze' ORDER BY id DESC LIMIT 20;"
+# AVERAGE tokens & cost per analyze request, plus totals
+sqlite3 usage.db "SELECT COUNT(*) reqs, ROUND(AVG(total_tokens),1) avg_tokens, ROUND(AVG(est_cost_usd),6) avg_cost, ROUND(SUM(est_cost_usd),4) total_cost FROM request_log WHERE endpoint='analyze' AND total_tokens IS NOT NULL;"
+# per-user, per-day token + cost totals
+sqlite3 usage.db "SELECT substr(ts,1,10) day, user_id, SUM(total_tokens) tokens, ROUND(SUM(est_cost_usd),4) cost FROM request_log WHERE endpoint='analyze' AND total_tokens IS NOT NULL GROUP BY day, user_id ORDER BY day DESC, cost DESC;"
 ```
+
+Rows logged before this feature have `NULL` token columns (hence the `IS NOT NULL` filter).
 
 ## Security note
 
