@@ -19,7 +19,11 @@ struct PaperClipperApp: App {
         } catch {
             fatalError("Failed to create SwiftData container: \(error)")
         }
-        // Firebase is configured lazily from HomeView's .task (keeps App.init off the main-actor hook).
+        // Configure Firebase here (its launch hooks fire before any view), unless we're only
+        // hosting unit tests. No-op when GoogleService-Info.plist is absent.
+        if !TestRuntime.isUnitTesting {
+            AuthManager.configureFirebaseIfAvailable()
+        }
     }
 
     private static var useInMemoryStore: Bool {

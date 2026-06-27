@@ -16,14 +16,8 @@ struct FullScreenImageView: View {
             ZStack(alignment: .topLeading) {
                 Color.black.ignoresSafeArea()
 
-                AsyncImage(url: imageURL) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFit()
-                    } else {
-                        ProgressView().tint(.white)
-                    }
-                }
-                .frame(width: geo.size.width, height: geo.size.height)
+                ClippingImage(url: imageURL, contentMode: .fit, maxDim: 4096)
+                    .frame(width: geo.size.width, height: geo.size.height)
                 .scaleEffect(scale)
                 .offset(offset)
                 .gesture(

@@ -7,6 +7,7 @@ final class PaperClipperUITests: XCTestCase {
 
     private let appleHeading = "County Fair Win"
     private let appleSummary = "Apple pie recipe wins the county fair"
+    private let teamHeading = "Championship Clinched"
     private let teamSummary = "Local team clinches the championship"
 
     override func setUpWithError() throws {
@@ -56,6 +57,21 @@ final class PaperClipperUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Article"].exists)
         XCTAssertTrue(app.staticTexts.element(matching: text(containing: "Apple pie recipe wins the county fair this year")).exists)
         XCTAssertTrue(app.buttons["Share"].exists)
+    }
+
+    func testTappingFirstCardOpensThatClipping() {
+        let app = launchSeeded()
+        // Newest-first ordering puts the team clipping in the first card. Tapping it must open the
+        // team clipping (not the apple one) — guards against the navigation off-by-one.
+        XCTAssertTrue(app.staticTexts[teamSummary].waitForExistence(timeout: 15))
+        // Tap the first card directly by its identifier (the newest = team clipping).
+        let firstCard = app.descendants(matching: .any)["clippingCard_seed_team.png"].firstMatch
+        XCTAssertTrue(firstCard.waitForExistence(timeout: 5))
+        firstCard.tap()
+        // The article text is unique to the opened detail (home cards don't show it), so it proves
+        // the FIRST card opened the TEAM clipping and not the apple one.
+        XCTAssertTrue(app.staticTexts.element(matching: text(containing: "clinches the championship in overtime")).waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts.element(matching: text(containing: "wins the county fair this year")).exists)
     }
 
     func testAddTagAndComment() {

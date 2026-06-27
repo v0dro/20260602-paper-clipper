@@ -146,21 +146,35 @@ struct HomeView: View {
             }
         } else {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12, pinnedViews: [.sectionHeaders]) {
+                // NOTE: headers are intentionally NOT pinned. `pinnedViews: [.sectionHeaders]` makes
+                // the floating section header intercept taps meant for the top clipping card (it
+                // opened the wrong clipping / didn't navigate). Inline headers keep the date grouping
+                // without that hit-testing bug.
+                LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(HomeHelpers.dateSections(visible), id: \.header) { section in
                         Section {
                             ForEach(section.items) { clip in
-                                ClippingCard(
+                                let card = ClippingCard(
                                     clipping: clip,
                                     query: query.trimmingCharacters(in: .whitespacesAndNewlines),
                                     isSelected: selection.contains(clip.fileName),
                                     inSelectionMode: inSelectionMode
                                 )
-                                .onTapGesture {
-                                    if inSelectionMode { toggle(clip) } else { path.append(clip) }
-                                }
-                                .onLongPressGesture(minimumDuration: 0.4) {
-                                    selection.insert(clip.fileName)
+                                if inSelectionMode {
+                                    // In selection mode a tap toggles instead of navigating.
+                                    card.onTapGesture { toggle(clip) }
+                                        .accessibilityIdentifier("clippingCard_\(clip.fileName)")
+                                } else {
+                                    // Canonical value-based navigation — reliably opens THIS clipping
+                                    // (a manual tap-gesture + path.append mis-routed which row pushed).
+                                    NavigationLink(value: clip) { card }
+                                        .buttonStyle(.plain)
+                                        .accessibilityIdentifier("clippingCard_\(clip.fileName)")
+                                        .simultaneousGesture(
+                                            LongPressGesture(minimumDuration: 0.4).onEnded { _ in
+                                                selection.insert(clip.fileName)
+                                            }
+                                        )
                                 }
                             }
                         } header: {
@@ -274,16 +288,12 @@ private struct ClippingCard: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            AsyncImage(url: ClippingStore.fileURL(clipping.fileName)) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                Color.secondary.opacity(0.2)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 200)
-            .clipped()
-            .accessibilityElement()
-            .accessibilityLabel("Saved clipping")
+            ClippingImage(url: ClippingStore.fileURL(clipping.fileName), contentMode: .fill, maxDim: 1024)
+                .frame(maxWidth: .infinity)
+                .frame(height: 200)
+                .clipped()
+                .accessibilityElement()
+                .accessibilityLabel("Saved clipping")
 
             caption
                 .frame(maxWidth: .infinity, alignment: .leading)

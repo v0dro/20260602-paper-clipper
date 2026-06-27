@@ -14,14 +14,8 @@ struct PreviewView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            AsyncImage(url: imageURL) { phase in
-                if let image = phase.image {
-                    image.resizable().scaledToFit()
-                } else {
-                    ProgressView().tint(.white)
-                }
-            }
-            .padding()
+            ClippingImage(url: imageURL, contentMode: .fit)
+                .padding()
 
             VStack {
                 HStack {

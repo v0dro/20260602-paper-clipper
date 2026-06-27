@@ -35,16 +35,12 @@ struct DetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                AsyncImage(url: ClippingStore.fileURL(clipping.fileName)) { image in
-                    image.resizable().scaledToFit()
-                } placeholder: {
-                    Color.secondary.opacity(0.2).frame(height: 220)
-                }
-                .frame(maxHeight: 240)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .contentShape(Rectangle())
-                .onTapGesture { showViewer = true }
-                .accessibilityLabel("Clipping image (tap to zoom)")
+                ClippingImage(url: ClippingStore.fileURL(clipping.fileName), contentMode: .fit, maxDim: 2048)
+                    .frame(maxHeight: 240)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .contentShape(Rectangle())
+                    .onTapGesture { showViewer = true }
+                    .accessibilityLabel("Clipping image (tap to zoom)")
 
                 Text("Tap the image to view full screen and zoom")
                     .font(.caption2)

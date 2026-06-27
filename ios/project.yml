@@ -38,6 +38,7 @@ targets:
       path: PaperClipper/Info.plist
       properties:
         CFBundleDisplayName: Paper Clipper AI
+        CFBundleName: Paper Clipper AI
         UILaunchScreen: {}
         NSCameraUsageDescription: "Used to photograph newspaper clippings."
         NSPhotoLibraryUsageDescription: "Used to import clipping photos."

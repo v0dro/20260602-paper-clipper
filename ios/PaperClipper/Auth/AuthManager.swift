@@ -18,16 +18,29 @@ final class AuthManager {
     /// Display name of the signed-in user (may be nil even when signed in). Mirrors Android's `displayName`.
     private(set) var displayName: String?
 
-    /// Call once at launch. Configures Firebase only if GoogleService-Info.plist is present.
-    func configureIfNeeded() {
+    /// Configures Firebase if `GoogleService-Info.plist` is present. This MUST run at app launch
+    /// (from the `@main` struct's initializer) — Firebase's own launch hooks fire before any view
+    /// appears, so deferring it logs "default app not configured". No-op when the plist is absent,
+    /// so the scaffold stays inert. Idempotent and not actor-isolated so `App.init` can call it.
+    nonisolated static func configureFirebaseIfAvailable() {
         #if canImport(FirebaseCore)
-        guard FirebaseApp.app() == nil else { return }
-        guard Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil else {
-            return // not configured yet — stay inert
+        guard FirebaseApp.app() == nil,
+              Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil else {
+            return
         }
         FirebaseApp.configure()
-        email = Auth.auth().currentUser?.email
-        displayName = Auth.auth().currentUser?.displayName
+        #endif
+    }
+
+    /// Ensures Firebase is configured, then refreshes the signed-in user's email/name. Called from
+    /// the UI once the view appears.
+    func configureIfNeeded() {
+        #if canImport(FirebaseCore)
+        Self.configureFirebaseIfAvailable()
+        if FirebaseApp.app() != nil {
+            email = Auth.auth().currentUser?.email
+            displayName = Auth.auth().currentUser?.displayName
+        }
         #endif
     }
 
