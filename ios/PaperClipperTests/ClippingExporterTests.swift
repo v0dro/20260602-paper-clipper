@@ -66,6 +66,21 @@ final class ClippingExporterTests: XCTestCase {
         XCTAssertFalse(html.contains("<news>"))
     }
 
+    func testExportSkipsWhitespaceOnlySummaryAndTextInHtml() throws {
+        SwiftDataTestSupport.writeImage("w.jpg")
+        let clip = Clipping(fileName: "w.jpg", createdAt: Date(timeIntervalSince1970: 1), status: .success)
+        clip.summary = "   "          // whitespace only
+        clip.extractedText = "  \n "  // whitespace only
+        context.insert(clip)
+        try context.save()
+
+        let entries = ZipTestSupport.readStoredZip(vm.exportData())
+        let html = try XCTUnwrap(String(data: try XCTUnwrap(entries["index.html"]), encoding: .utf8))
+        // Matches Android's isNullOrBlank(): whitespace-only fields are not rendered.
+        XCTAssertFalse(html.contains("<h3>Summary</h3>"))
+        XCTAssertFalse(html.contains("<h3>Extracted text</h3>"))
+    }
+
     func testExportOrdersClippingsNewestFirst() throws {
         SwiftDataTestSupport.writeImage("old.jpg")
         SwiftDataTestSupport.writeImage("new.jpg")

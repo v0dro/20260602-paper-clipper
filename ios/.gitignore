@@ -8,6 +8,7 @@ GoogleService-Info.plist
 
 # Xcode / SPM
 .build/
+build/
 DerivedData/
 **/xcuserdata/
 *.xcworkspace

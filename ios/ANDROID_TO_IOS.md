@@ -1,7 +1,7 @@
 # Android → iOS parity map
 
-How each Android piece maps to its iOS counterpart, and what's done vs. still to build. Android
-sources are under `../android/app/src/main/java/com/example/paperclipper/`.
+How each Android piece maps to its iOS counterpart. The iOS app is now a **full 1:1 clone** of the
+Android app. Android sources are under `../android/app/src/main/java/com/example/paperclipper/`.
 
 ## Tech equivalents
 | Android | iOS |
@@ -14,35 +14,56 @@ sources are under `../android/app/src/main/java/com/example/paperclipper/`.
 | `HttpURLConnection` | `URLSession` |
 | Cropify (Compose crop lib) | custom SwiftUI crop overlay (`CGImage.cropping`) |
 | Compose `Canvas` + `detectDragGestures` (lasso) | SwiftUI `Canvas` + `DragGesture` + `CGPath` mask |
+| `java.util.zip` export | dependency-free `ZipArchive` (STORE method + CRC-32) |
+| `BitmapFactory` downsampling | `CGImageSource` thumbnail (`ImageProcessing.loadDownsampled`) |
 | classic Google Sign-In + Firebase Auth | GoogleSignIn-iOS + FirebaseAuth |
-| SAF `CreateDocument` export | `ShareLink` / `.fileExporter` |
-| `ModalNavigationDrawer` | a menu sheet / side menu |
+| SAF `CreateDocument` export | `UIActivityViewController` share sheet |
+| `ModalNavigationDrawer` | `MenuSheet` |
+| Robolectric / Compose UI tests | XCTest (unit) + XCUITest (UI) |
 
-## File-by-file status
+## File-by-file status — all ✅ complete
 | Android | iOS | Status |
 |---|---|---|
-| `gemini/GeminiClient.kt` | `Networking/AnalyzeClient.swift` | ✅ done — same proxy `/analyze`, bearer token |
-| `data/ClippingEntity/Tag/Comment` | `Models/Clipping.swift`, `Tag.swift`, `Comment.swift` | ✅ done (SwiftData) |
-| `data/AppDatabase` + DAOs | SwiftData `ModelContainer` + `@Query`/`FetchDescriptor` | ✅ done |
-| `data/ClippingsRepository` (reconcile + analyze) | `Storage/ClippingStore.swift` | ✅ done |
-| `ClippingsViewModel` | `ViewModels/ClippingsViewModel.swift` | ✅ done (analyze/delete/tags/comments) |
-| `auth/AuthManager.kt` (inert scaffold) | `Auth/AuthManager.swift` | ✅ scaffold — inert until `GoogleService-Info.plist` |
-| `build.gradle.kts` BuildConfig (SERVER_URL/PROXY_TOKEN) | `Config.xcconfig` → Info.plist → `AppConfig.swift` | ✅ done |
-| `MainActivity` `HomeScreen` (list, search, sort) | `Views/HomeView.swift` | ✅ list + search + sort + capture + nav |
-| `HomeScreen` multi-select + delete + dustbin | `HomeView` swipe-to-delete | ⚠️ partial — swipe delete only; long-press multi-select TODO |
-| `HomeScreen` drawer (Log in / Export) | `HomeView` `MenuSheet` | ⚠️ menu present; Log in + Export actions TODO |
-| `DetailScreen` (summary, text, tags, comments) | `Views/DetailView.swift` | ✅ done |
-| capture (`TakePicture`) | `Views/CaptureView.swift` | ✅ done (camera/library → JPEG) |
-| `PreviewScreen` (Crop/Select) | `Views/PreviewView.swift` | 🚧 stub — not yet wired into capture flow |
-| `CropScreen` (Cropify) | `Views/CropView.swift` | 🚧 stub |
-| `LassoScreen` (mask → PNG) | `Views/LassoView.swift` | 🚧 partial — path capture + overlay done; mask/save TODO |
-| `ClippingsRepository.exportTo` (ZIP) | `ClippingsViewModel.export` (TODO) | 🚧 TODO — `ShareLink`/`.fileExporter` |
-| EXIF orientation fix (`applyExifOrientation`) | handle in capture/crop via `UIImage.imageOrientation` | 🚧 TODO (UIImage usually upright already) |
-| launcher icon (scrapbook + AI sparkles) | `Assets.xcassets` AppIcon | 🚧 TODO — recreate the artwork as an iOS icon set |
+| `gemini/GeminiClient.kt` | `Networking/AnalyzeClient.swift` | ✅ same proxy `/analyze`, bearer token, `X-User-Id` |
+| `net/Backend.kt` | `Networking/Backend.swift` | ✅ HTTPS guard + URL join |
+| `FeedbackClient.kt` | `Networking/FeedbackClient.swift` | ✅ `/feedback` (message/email/appVersion) |
+| `UserId.kt` | `Networking/UserId.swift` | ✅ `uid:` / `dev:` per-install id |
+| `util/Logx.kt` (`redactEmail`) | `Util/Logx.swift` | ✅ |
+| `data/ClippingEntity/Tag/Comment` | `Models/Clipping.swift`, `Tag.swift`, `Comment.swift` | ✅ SwiftData |
+| `data/AppDatabase` + DAOs | SwiftData `ModelContainer` + `@Query`/`FetchDescriptor` | ✅ |
+| `data/ClippingsRepository` (reconcile/analyze/CRUD) | `Storage/ClippingStore.swift` + `ViewModels/ClippingsViewModel.swift` | ✅ injectable analyze |
+| `ClippingsRepository.exportTo` (ZIP) | `Storage/ClippingExporter.swift` + `ZipArchive.swift` | ✅ images/ + metadata.json + index.html |
+| `ClippingsViewModel` | `ViewModels/ClippingsViewModel.swift` | ✅ analyze/delete/clearAll/tags/comments/export/feedback |
+| `auth/AuthManager.kt` | `Auth/AuthManager.swift` | ✅ scaffold — inert until `GoogleService-Info.plist` |
+| `build.gradle.kts` BuildConfig | `Config.xcconfig` → Info.plist → `AppConfig.swift` | ✅ SERVER_URL / PROXY_TOKEN / version |
+| `HomeScreen` (list/search/sort/drawer) | `Views/HomeView.swift` + `HomeHelpers.swift` | ✅ image cards, date sections, search highlight |
+| `HomeScreen` multi-select + delete | `HomeView` long-press selection + delete | ✅ |
+| `FilterDialog` (sort, Apply/Cancel) | `HomeView` `FilterSheet` | ✅ |
+| `HomeScreen` drawer (Log in/out, Export, Clear all, Feedback) | `HomeView` `MenuSheet` + dialogs | ✅ |
+| `DetailScreen` (summary/text/tags/comments) | `Views/DetailView.swift` | ✅ |
+| `ImageViewerScreen` (zoom/pan/double-tap) | `Views/FullScreenImageView.swift` | ✅ |
+| capture (`TakePicture`) → flow | `Views/CaptureView.swift` + `CaptureFlowView.swift` | ✅ camera → preview → crop/select |
+| `PreviewScreen` (Crop/Select) | `Views/PreviewView.swift` | ✅ (+ explicit Use/Discard) |
+| `CropScreen` (Cropify) | `Views/CropView.swift` | ✅ drag-rect crop → JPEG, returns to library |
+| `LassoScreen` (mask → PNG) | `Views/LassoView.swift` + `ImageProcessing.swift` | ✅ path mask → transparent PNG |
+| EXIF orientation + downsampling | `ImageProcessing` (`normalizedUp`, `loadDownsampled`) | ✅ |
+| launcher icon (scrapbook + AI sparkles) | `Assets.xcassets/AppIcon` | ✅ recreated 1024px |
 
-## Suggested build order to reach parity
-1. Wire capture → `PreviewView` → (Crop / Select) navigation.
-2. Implement `CropView` (drag-rect + `CGImage.cropping`) and finish `LassoView` (mask via `CGContext`/`CGPath` → PNG).
-3. `MenuSheet`: present Google Sign-In (`auth.signIn(presenting:)` using the top view controller) and Export (`ShareLink`).
-4. Long-press multi-select + delete on the list; status badge/summary polish.
-5. AppIcon asset; final styling pass to match Android.
+## Accepted platform mappings (not a regression)
+- **Network timeouts.** Android uses separate `connectTimeout`/`readTimeout` (`HttpURLConnection`).
+  iOS `URLRequest.timeoutInterval` is a single value, set to the Android **read** timeout (90s for
+  `/analyze`, 30s for `/feedback`) — iOS has no separate connect-timeout knob.
+- **JSON key order.** `metadata.json` keys are sorted on iOS (`org.json` uses insertion order on
+  Android). JSON is order-independent; forward-slash escaping now matches (both escape `\/`).
+- **Empty/menu/tag chrome.** iOS uses `ContentUnavailableView`, sheets and capsule chips where
+  Android uses Compose equivalents — same text and behavior, native presentation.
+
+## Tests
+- **Unit (XCTest, `PaperClipperTests/`)** mirror the Android JVM/Robolectric tests: `Backend` HTTPS
+  guard + URL join, `AnalyzeClient` JSON parse/error, `HomeHelpers` (dateSections / searchSnippet /
+  statusLabel / fmt), models contract, `ClippingStore` reconcile/analyze (stubbed), ViewModel
+  tag/comment/delete/clearAll, `ClippingExporter` ZIP/HTML/JSON + escaping, `ZipArchive` CRC/round-trip.
+- **UI (XCUITest, `PaperClipperUITests/`)** drive the seeded app (`-uiTestSeed`): launch, search
+  filter, detail content, add tag + comment, menu actions, filter-dialog sort.
+
+Run them: `ios/scripts/run-tests.sh` (or `… unit` / `… ui`).

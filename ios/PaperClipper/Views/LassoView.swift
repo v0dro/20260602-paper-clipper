@@ -66,7 +66,7 @@ struct LassoView: View {
             .padding(24)
         }
         .background(Color.black.ignoresSafeArea())
-        .task { if image == nil { image = UIImage(contentsOfFile: imageURL.path) } }
+        .task { if image == nil { image = ImageProcessing.loadDownsampled(imageURL) } }
     }
 
     /// The displayed image frame at the time of the last gesture (for mapping points → pixels).

@@ -19,6 +19,7 @@ struct HomeView: View {
 
     @State private var showCapture = false
     @State private var showMenu = false
+    @State private var showFilter = false
     @State private var showClearConfirm = false
     @State private var showFeedback = false
     @State private var exportItem: IdentifiableURL?
@@ -64,6 +65,13 @@ struct HomeView: View {
                         onFeedback: { showFeedback = true }
                     )
                     .presentationDetents([.medium, .large])
+                }
+                .sheet(isPresented: $showFilter) {
+                    FilterSheet(sortDescending: sortDescending) { descending in
+                        sortDescending = descending
+                        showFilter = false
+                    }
+                    .presentationDetents([.height(240)])
                 }
                 .sheet(isPresented: $showFeedback) {
                     FeedbackSheet { message in
@@ -177,12 +185,7 @@ struct HomeView: View {
                     .accessibilityLabel("Open menu")
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Picker("Sort by date", selection: $sortDescending) {
-                        Text("Date — newest first").tag(true)
-                        Text("Date — oldest first").tag(false)
-                    }
-                } label: { Image(systemName: "slider.horizontal.3") }
+                Button { showFilter = true } label: { Image(systemName: "slider.horizontal.3") }
                     .accessibilityLabel("Filter")
             }
         }
@@ -355,6 +358,58 @@ private struct MenuSheet: View {
             .navigationTitle("Menu")
             .navigationBarTitleDisplayMode(.inline)
         }
+    }
+}
+
+/// Sort filter with explicit Apply/Cancel — the change only commits on Apply. Mirrors Android's
+/// `FilterDialog` (a modal AlertDialog with radio options, applied on confirm).
+private struct FilterSheet: View {
+    let sortDescending: Bool
+    let onApply: (Bool) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var descending: Bool
+
+    init(sortDescending: Bool, onApply: @escaping (Bool) -> Void) {
+        self.sortDescending = sortDescending
+        self.onApply = onApply
+        _descending = State(initialValue: sortDescending)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Sort by").font(.headline).padding(.bottom, 4)
+                radioRow("Date — newest first", selected: descending) { descending = true }
+                radioRow("Date — oldest first", selected: !descending) { descending = false }
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Filter")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Apply") { onApply(descending) }
+                }
+            }
+        }
+    }
+
+    private func radioRow(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(selected ? Color.accentColor : .secondary)
+                Text(label).foregroundStyle(.primary)
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 8)
+        }
+        .buttonStyle(.plain)
     }
 }
 

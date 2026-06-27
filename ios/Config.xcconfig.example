@@ -9,3 +9,7 @@ PROXY_TOKEN = your-proxy-token-here
 // From GoogleService-Info.plist (the REVERSED_CLIENT_ID value) once Firebase is set up.
 // Leave blank until then — sign-in stays inert (mirrors the Android scaffold).
 REVERSED_CLIENT_ID =
+
+// Apple Developer Team ID for code signing. Leave blank for the Simulator. To build/install on a
+// physical device, set your 10-char Team ID (Xcode ▸ Settings ▸ Accounts, or the membership page).
+DEVELOPMENT_TEAM =

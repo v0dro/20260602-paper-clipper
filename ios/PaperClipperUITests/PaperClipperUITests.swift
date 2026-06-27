@@ -60,17 +60,25 @@ final class PaperClipperUITests: XCTestCase {
         XCTAssertTrue(apple.waitForExistence(timeout: 15))
         apple.tap()
 
+        // Trailing "\n" submits the single-line field, dismissing the keyboard so the Add button
+        // isn't occluded (a software-keyboard hang otherwise).
         let tagField = app.textFields["newTagField"]
         XCTAssertTrue(tagField.waitForExistence(timeout: 5))
         tagField.tap()
-        tagField.typeText("News")
-        app.buttons["addTagButton"].tap()
-        XCTAssertTrue(app.staticTexts["News"].waitForExistence(timeout: 5))
+        tagField.typeText("News\n")
+        let addTag = app.buttons["addTagButton"]
+        XCTAssertTrue(addTag.waitForExistence(timeout: 5))
+        addTag.tap()
+        // The tag chip is a Button (its Text is absorbed into the button's label).
+        XCTAssertTrue(app.buttons["News"].waitForExistence(timeout: 5))
 
         let commentField = app.textFields["newCommentField"]
+        XCTAssertTrue(commentField.waitForExistence(timeout: 5))
         commentField.tap()
-        commentField.typeText("great clipping")
-        app.buttons["addCommentButton"].tap()
+        commentField.typeText("great clipping\n")
+        let addComment = app.buttons["addCommentButton"]
+        XCTAssertTrue(addComment.waitForExistence(timeout: 5))
+        addComment.tap()
         XCTAssertTrue(app.staticTexts["great clipping"].waitForExistence(timeout: 5))
     }
 
@@ -85,12 +93,14 @@ final class PaperClipperUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Log in"].exists)
     }
 
-    func testSortMenuTogglesWithoutLosingClippings() {
+    func testFilterDialogAppliesSortWithoutLosingClippings() {
         let app = launchSeeded()
         XCTAssertTrue(app.staticTexts[appleSummary].waitForExistence(timeout: 15))
 
         app.buttons["Filter"].tap()
+        XCTAssertTrue(app.buttons["Date — oldest first"].waitForExistence(timeout: 5))
         app.buttons["Date — oldest first"].tap()
+        app.buttons["Apply"].tap()
 
         // Both clippings still present after re-sorting.
         XCTAssertTrue(app.staticTexts[appleSummary].waitForExistence(timeout: 5))

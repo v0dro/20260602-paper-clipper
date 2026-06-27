@@ -1,13 +1,14 @@
 # Paper Clipper — iOS
 
-SwiftUI app (iOS 17+, SwiftData) that mirrors the Android app and talks to the **same backends**:
-the proxy `/analyze` server (`../server`) and the same Firebase project for auth.
+SwiftUI app (iOS 17+, SwiftData) that is a **full 1:1 clone of the Android app** and talks to the
+**same backends**: the proxy `/analyze` server (`../server`) and the same Firebase project for auth.
 
-> ✅ Builds and runs. Verified with Xcode 26.2 (iOS 26 SDK): `xcodegen generate` →
-> `xcodebuild` **BUILD SUCCEEDED** with the full Firebase/GoogleSignIn package graph, and the app
-> launches in the simulator — the capture → save → reconcile → list → analyze pipeline works
-> end-to-end (the network call hits the proxy you configure in `Config.xcconfig`). The architecture
-> and backend-facing layers are complete; some screens are still stubs (see `ANDROID_TO_IOS.md`).
+> ✅ Builds, runs and is tested. Verified with Xcode 26.2: `xcodegen generate` → `xcodebuild`
+> **BUILD SUCCEEDED** with the full Firebase/GoogleSignIn package graph; the whole test suite
+> (**55 unit + 6 UI tests**) passes on the iOS 17+ Simulator. Every Android feature is implemented —
+> capture → preview → crop/lasso, the analyze pipeline, the library (image cards, date sections,
+> search highlighting, multi-select delete, sort filter), detail (tags/comments/zoom), export ZIP,
+> feedback, the sign-in scaffold, and the app icon. See `ANDROID_TO_IOS.md` for the file-by-file map.
 
 ## Prerequisites (on a Mac)
 - Xcode 15+ (iOS 17 SDK).
@@ -30,17 +31,34 @@ Xcode resolves the Swift Package dependencies (Firebase, GoogleSignIn) on first 
    (the `REVERSED_CLIENT_ID` value from that plist). Until you do, sign-in stays inert — exactly like
    the Android scaffold.
 
-## Run
-Select an iOS 17+ simulator or device and Run. Capture a clipping → it's sent to the proxy
-`/analyze` → the summary/text appear, stored in SwiftData. Tap a clipping for the detail screen
-(summary, extracted text, tags, comments).
+## Run (Simulator)
+Select an iOS 17+ simulator and Run. Capture (the simulator falls back to the photo library) →
+preview → optionally crop or lasso-select → it's sent to the proxy `/analyze` → the summary/text
+appear, stored in SwiftData. Tap a clipping for the detail screen (summary, extracted text, tags,
+comments, tap-to-zoom).
 
-## What's implemented vs TODO
-See **`ANDROID_TO_IOS.md`** for the file-by-file parity map. In short: the data models, the proxy
-client, the Firebase/Google sign-in scaffold, the store/analysis pipeline, the library list (search +
-sort), capture, and the detail screen (tags + comments) are done. Crop, the lasso mask-and-save,
-export ZIP, and multi-select delete polish are stubbed.
+## Run on a physical device over USB
+1. In `Config.xcconfig`, set `DEVELOPMENT_TEAM` to your 10-char Apple Team ID (Xcode ▸ Settings ▸
+   Accounts). A free personal team works for on-device debugging.
+2. Plug in the iPhone, unlock it, tap **Trust**.
+3. Easiest: `open PaperClipper.xcodeproj`, pick the device, hit ▶.
+   Or from the CLI: **`ios/scripts/run-on-device.sh`** — it generates the project, finds the
+   connected device, builds with automatic signing, installs and launches. If iOS shows "Untrusted
+   Developer", approve it under Settings ▸ General ▸ VPN & Device Management.
+
+## Tests
+- `ios/scripts/run-tests.sh` runs the whole suite on the Simulator (`unit` / `ui` to scope it).
+- **55 unit tests** (`PaperClipperTests/`) and **6 UI tests** (`PaperClipperUITests/`, seeded via the
+  `-uiTestSeed` launch argument). They mirror the Android Robolectric + Compose UI tests.
+
+## What's implemented
+See **`ANDROID_TO_IOS.md`** — every Android feature is cloned: the data models, the proxy + feedback
+clients, the Firebase/Google sign-in scaffold, the store/analysis pipeline, the library (image cards,
+date sections, search highlighting, multi-select delete, sort filter, menu), capture → crop/lasso,
+the detail screen (tags + comments + full-screen zoom), export ZIP, and the app icon.
 
 ## Backends — no changes needed
 This app reuses the existing proxy server and Firebase project as-is. Bundle id is
-`com.example.paperclipper` (override in `project.yml`).
+`com.captureken.paperclipper` (matches the Android `applicationId`; override in `project.yml`). The
+Firebase iOS app's bundle id must match it, so register that bundle id in Firebase and use its
+`GoogleService-Info.plist`.
