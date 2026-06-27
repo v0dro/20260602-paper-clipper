@@ -26,6 +26,22 @@ class GeminiClientParseTest {
     }
 
     @Test
+    fun parseResult_parsesAndTrimsHeading() {
+        val r = GeminiClient.parseResult(
+            """{"extractedText":"x","summary":"y","heading":"  Big News  "}""",
+        )
+        assertTrue(r is GeminiResult.Success)
+        assertEquals("Big News", (r as GeminiResult.Success).heading)
+    }
+
+    @Test
+    fun parseResult_missingHeadingDefaultsToEmpty() {
+        val r = GeminiClient.parseResult("""{"extractedText":"x","summary":"y"}""")
+        assertTrue(r is GeminiResult.Success)
+        assertEquals("", (r as GeminiResult.Success).heading)
+    }
+
+    @Test
     fun parseResult_succeedsWithOnlyOneField() {
         assertTrue(GeminiClient.parseResult("""{"summary":"only summary"}""") is GeminiResult.Success)
         assertTrue(GeminiClient.parseResult("""{"extractedText":"only text"}""") is GeminiResult.Success)

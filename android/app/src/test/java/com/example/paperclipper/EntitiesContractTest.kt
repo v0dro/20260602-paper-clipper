@@ -51,7 +51,7 @@ class EntitiesContractTest {
         assertEquals(comment, comment.copy())
         assertNotEquals(comment, comment.copy(text = "bye"))
 
-        val clip = Clipping(File("a.jpg"), 1L, ClippingStatus.SUCCESS, "t", "s", null)
+        val clip = Clipping(File("a.jpg"), 1L, ClippingStatus.SUCCESS, "t", "s", "h", null)
         assertEquals(clip, clip.copy())
         assertNotEquals(clip, clip.copy(status = ClippingStatus.ERROR))
     }

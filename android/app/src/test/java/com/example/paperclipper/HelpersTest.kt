@@ -37,6 +37,7 @@ class HelpersTest {
             status = ClippingStatus.SUCCESS,
             extractedText = null,
             summary = null,
+            heading = null,
             errorMessage = null,
         )
 

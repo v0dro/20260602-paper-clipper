@@ -121,10 +121,24 @@ GEMINI_ENDPOINT = (
 # The newspaper-clipping prompt lives here now (moved off the device), so it can be tuned
 # without rebuilding the app.
 PROMPT = (
-    "This is a newspaper clipping. Transcribe all readable text from it exactly, then "
-    "summarize it. Respond with ONLY a JSON object with two string fields: "
-    '"extractedText" (the full transcription, no commentary) and '
-    '"summary" (a concise 2-3 sentence summary). Do not include any other text.'
+    "This is a newspaper clipping. Read it, then respond with ONLY a JSON object with these "
+    'three string fields, in this exact order: "heading" (a title of fewer than 5 words '
+    'capturing the main topic), "summary" (a concise 2-3 sentence summary), and '
+    '"extractedText" (a full, exact transcription of all readable text, no commentary). '
+    "Emit heading and summary first so they are never lost if the transcription is long. "
+    "Do not include any other text."
+)
+
+# Second-pass prompt: the raw transcription above is messy (OCR errors, broken lines, stray
+# captions/bylines/page furniture). This rewrites it into a clean, readable article. The raw
+# first-pass transcription is discarded; only this cleaned article is shown in the app.
+CLEANUP_PROMPT = (
+    "Below is raw text transcribed from a newspaper clipping. It may contain OCR errors, "
+    "words split across line breaks, hyphenation, and stray fragments such as captions, "
+    "bylines, datelines or page furniture. Rewrite it into a clean, presentable article: fix "
+    "obvious OCR mistakes, rejoin broken words and lines, drop the stray fragments, and "
+    "organize it into well-formed paragraphs. Preserve the actual content and meaning and do "
+    "NOT invent any facts. Respond with ONLY the cleaned article text, no preamble or commentary."
 )
 
 app = FastAPI(title="Paper Clipper AI proxy")
@@ -192,6 +206,7 @@ class AnalyzeRequest(BaseModel):
 class AnalyzeResponse(BaseModel):
     extractedText: str
     summary: str
+    heading: str = ""
 
 
 class FeedbackRequest(BaseModel):
@@ -290,7 +305,7 @@ async def analyze(
             # gemini-2.5-flash is a "thinking" model; for transcription we don't need it, and leaving
             # it on occasionally consumes the token budget and returns empty/truncated JSON -> 502.
             "thinkingConfig": {"thinkingBudget": 0},
-            "maxOutputTokens": 4096,
+            "maxOutputTokens": 8192,
         },
     }
 
@@ -320,32 +335,98 @@ async def analyze(
                 break
             continue
 
-        extracted, summary = _parse_gemini(resp.text)
+        extracted, summary, heading = _parse_gemini(resp.text)
         if extracted is None or (not extracted and not summary):
             last_error = "Gemini returned no usable text"
             print(f"[analyze] attempt {attempt}: empty/unparseable: {resp.text[:300]}", flush=True)
             continue
 
+        # Second pass: rewrite the raw transcription into a clean, presentable article. The raw
+        # text is thrown away — only the cleaned article is returned. Falls back to the raw text
+        # if the cleanup call fails, so a clipping is never left with no body.
+        article = (await _cleanup_article(extracted)) or extracted if extracted else ""
+
         usage_increment(user_id, today)  # count only successful analyses
-        request.state.log_extra.update(extracted_text=extracted, summary=summary)
-        return AnalyzeResponse(extractedText=extracted, summary=summary)
+        request.state.log_extra.update(extracted_text=article, summary=summary)
+        return AnalyzeResponse(extractedText=article, summary=summary, heading=heading)
 
     request.state.log_extra["error"] = last_error
     raise HTTPException(status_code=502, detail=last_error)
 
 
-def _parse_gemini(raw: str) -> tuple[str | None, str]:
-    """Returns (extractedText, summary). extractedText is None if the response shape is wrong."""
+async def _cleanup_article(raw_text: str) -> str:
+    """Second Gemini pass: rewrite raw transcription into a clean article. '' if the call fails."""
+    if not GEMINI_API_KEY:
+        return ""
+    body = {
+        "contents": [{"parts": [{"text": f"{CLEANUP_PROMPT}\n\n---\n{raw_text}"}]}],
+        "generationConfig": {
+            "thinkingConfig": {"thinkingBudget": 0},
+            "maxOutputTokens": 8192,
+        },
+    }
+    try:
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            resp = await client.post(
+                GEMINI_ENDPOINT,
+                headers={"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY},
+                json=body,
+            )
+    except httpx.HTTPError as exc:
+        print(f"[cleanup] network error: {exc}", flush=True)
+        return ""
+    if resp.status_code // 100 != 2:
+        print(f"[cleanup] HTTP {resp.status_code}: {resp.text[:200]}", flush=True)
+        return ""
+    try:
+        data = json.loads(resp.text)
+        return str(data["candidates"][0]["content"]["parts"][0]["text"]).strip()
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+        print(f"[cleanup] unparseable response: {resp.text[:200]}", flush=True)
+        return ""
+
+
+def _parse_gemini(raw: str) -> tuple[str | None, str, str]:
+    """Returns (extractedText, summary, heading). extractedText is None if the shape is wrong.
+
+    The model emits heading + summary before the (potentially long) transcription, so if the
+    output is truncated at the token limit the JSON won't parse strictly. In that case we salvage
+    the complete leading fields with a regex fallback instead of throwing the whole result away.
+    """
     try:
         data = json.loads(raw)
         text = data["candidates"][0]["content"]["parts"][0]["text"]
     except (json.JSONDecodeError, KeyError, IndexError, TypeError):
-        return None, ""
+        return None, "", ""
+
     try:
         inner = json.loads(text)
+        return (
+            str(inner.get("extractedText", "")).strip(),
+            str(inner.get("summary", "")).strip(),
+            str(inner.get("heading", "")).strip(),
+        )
     except json.JSONDecodeError:
-        return None, ""
-    return str(inner.get("extractedText", "")).strip(), str(inner.get("summary", "")).strip()
+        pass
+
+    # Truncated/malformed JSON: pull out whatever complete fields we can.
+    extracted = _json_string_field(text, "extractedText")
+    summary = _json_string_field(text, "summary")
+    heading = _json_string_field(text, "heading")
+    if not extracted and not summary and not heading:
+        return None, "", ""
+    return extracted, summary, heading
+
+
+def _json_string_field(text: str, name: str) -> str:
+    """Extracts one JSON string field's value from possibly-truncated text. '' if absent/incomplete."""
+    match = re.search(rf'"{name}"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
+    if not match:
+        return ""
+    try:
+        return json.loads(f'"{match.group(1)}"').strip()  # unescape via JSON
+    except json.JSONDecodeError:
+        return ""
 
 
 def _gemini_error(raw: str, status: int) -> str:

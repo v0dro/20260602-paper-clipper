@@ -23,6 +23,7 @@ data class Clipping(
     val status: ClippingStatus,
     val extractedText: String?,
     val summary: String?,
+    val heading: String?,
     val errorMessage: String?,
 )
 
@@ -83,6 +84,7 @@ class ClippingsRepository(
                         .getOrDefault(ClippingStatus.PENDING),
                     extractedText = row.extractedText,
                     summary = row.summary,
+                    heading = row.heading,
                     errorMessage = row.errorMessage,
                 )
             }
@@ -141,14 +143,14 @@ class ClippingsRepository(
         val html = StringBuilder()
         html.append(
             "<!DOCTYPE html><html><head><meta charset=\"utf-8\">" +
-                "<title>Paper Clipper export</title><style>" +
+                "<title>Paper Clipper AI export</title><style>" +
                 "body{font-family:sans-serif;margin:24px;background:#f5f5f5}" +
                 ".c{background:#fff;border-radius:8px;padding:16px;margin:0 0 16px;box-shadow:0 1px 3px rgba(0,0,0,.15)}" +
                 "img{max-width:100%;border-radius:6px}.tag{display:inline-block;background:#e0e0ff;" +
                 "border-radius:12px;padding:2px 10px;margin:2px;font-size:13px}" +
                 "h3{margin:8px 0 4px}.meta{color:#666;font-size:13px}pre{white-space:pre-wrap}</style></head><body>",
         )
-        html.append("<h1>Paper Clipper — ${clips.size} clippings</h1>")
+        html.append("<h1>Paper Clipper AI — ${clips.size} clippings</h1>")
 
         ZipOutputStream(out).use { zip ->
             for (clip in clips) {
@@ -238,6 +240,7 @@ class ClippingsRepository(
                     status = ClippingStatus.SUCCESS.name,
                     extractedText = result.extractedText,
                     summary = result.summary,
+                    heading = result.heading.ifBlank { null },
                     errorMessage = null,
                     model = "server",
                     processedAt = System.currentTimeMillis(),
@@ -247,6 +250,7 @@ class ClippingsRepository(
                     status = ClippingStatus.ERROR.name,
                     extractedText = null,
                     summary = null,
+                    heading = null,
                     errorMessage = result.message,
                     model = "server",
                     processedAt = System.currentTimeMillis(),

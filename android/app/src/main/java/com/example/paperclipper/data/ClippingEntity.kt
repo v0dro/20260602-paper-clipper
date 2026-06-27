@@ -17,6 +17,7 @@ data class ClippingEntity(
     val status: String = ClippingStatus.PENDING.name,
     val extractedText: String? = null,
     val summary: String? = null,
+    val heading: String? = null,
     val errorMessage: String? = null,
     val model: String? = null,
     val processedAt: Long? = null,
