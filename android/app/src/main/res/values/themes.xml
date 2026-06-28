@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.PaperClipper" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Platform Material parent so we don't drag in the legacy Material Components AAR; Compose owns
+         the visual theme (see ui/theme/Newsprint.kt). We only set the window-level newsprint chrome
+         so the launch background and system bars match the paper sheet rather than flashing white. -->
+    <style name="Theme.PaperClipper" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/paper</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
 </resources>
