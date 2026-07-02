@@ -1,0 +1,25 @@
+# Paper Clipper AI proxy — Cloudflare Worker fallback (see README.md).
+# Secrets (GEMINI_API_KEY, PROXY_TOKEN) are NOT set here — use `npx wrangler secret put <NAME>`
+# for the deployed worker and .dev.vars (gitignored) for local `wrangler dev`.
+
+name = "paper-clipper-worker"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+
+[vars]
+GEMINI_MODEL = "gemini-2.5-flash"
+DAILY_LIMIT = "100"
+
+# Per-user daily-limit counters live in Workers KV. Create the namespace once with
+#   npx wrangler kv namespace create USAGE_KV
+# and paste the printed id below (namespace ids are account-specific, not secret).
+# If the binding is missing/unbound, the worker simply skips the daily limit.
+[[kv_namespaces]]
+binding = "USAGE_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+# Optional: serve the worker from a custom domain instead of the *.workers.dev URL
+# (the domain must be on your Cloudflare account). Uncomment and adjust:
+# routes = [
+#   { pattern = "worker.example.com", custom_domain = true }
+# ]

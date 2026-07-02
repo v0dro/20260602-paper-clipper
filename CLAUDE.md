@@ -1,11 +1,12 @@
 # Paper Clipper
 
-An app for capturing newspaper clippings with the camera, analyzing them with AI, and saving them locally. This is a **monorepo** with three sub-projects:
+An app for capturing newspaper clippings with the camera, analyzing them with AI, and saving them locally. This is a **monorepo** with four sub-projects:
 
 | Folder | What | Docs |
 |---|---|---|
 | `android/` | The Android app (Kotlin + Jetpack Compose). The Gradle root — run all `./gradlew` commands from here. | this file |
 | `server/` | Python FastAPI proxy that holds the Gemini key and is exposed via a Cloudflare tunnel. | `server/README.md` |
+| `worker/` | Cloudflare Worker (TypeScript) mirroring the server's `/analyze` — the app's fallback when the tunnel is down. | `worker/README.md` |
 | `ios/` | The iOS app (SwiftUI, iOS 17+, SwiftData), mirroring Android and using the same backends. **Cannot be built on this Linux machine — build in Xcode on a Mac.** | `ios/README.md`, `ios/ANDROID_TO_IOS.md` |
 
 The rest of this file documents the **Android** sub-project.
@@ -84,6 +85,7 @@ There are no AVDs yet. Create one via **Android Studio → Tools → Device Mana
 .                                        # repo root
 ├── CLAUDE.md
 ├── server/                              # Python AI proxy (see server/README.md)
+├── worker/                              # Cloudflare Worker /analyze fallback (see worker/README.md)
 ├── ios/                                 # iOS app (see ios/README.md)
 └── android/                             # Android app — Gradle root (run ./gradlew here)
 ├── build.gradle.kts                     # root: plugins apply false

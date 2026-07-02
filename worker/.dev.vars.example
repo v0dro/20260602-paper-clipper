@@ -1,0 +1,9 @@
+# Local-dev secrets for `npx wrangler dev`. Copy to .dev.vars (gitignored) and fill in.
+# In production these are set with `npx wrangler secret put <NAME>` instead — never committed.
+
+# Gemini key (from Google AI Studio) — same key as server/.env.
+GEMINI_API_KEY=
+
+# Must be the SAME value as the home server's PROXY_TOKEN, so the app's single
+# embedded token works against both backends.
+PROXY_TOKEN=
