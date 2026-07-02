@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Editorial Newsprint palette (mirrors NP.* in ui/theme/Newsprint.kt). -->
-    <color name="paper">#F3ECDF</color>
-    <color name="board">#E7DDCA</color>
-    <color name="ink">#1C1A15</color>
-    <color name="red">#B23A2E</color>
-</resources>

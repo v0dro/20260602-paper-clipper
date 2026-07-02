@@ -53,21 +53,27 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -101,10 +107,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.BaselineShift
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
@@ -119,28 +122,6 @@ import androidx.core.content.IntentCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.sp
-import com.example.paperclipper.ui.theme.AnalyzingDot
-import com.example.paperclipper.ui.theme.ChromeButton
-import com.example.paperclipper.ui.theme.Hairline
-import com.example.paperclipper.ui.theme.MastheadRule
-import com.example.paperclipper.ui.theme.NP
-import com.example.paperclipper.ui.theme.NewsButton
-import com.example.paperclipper.ui.theme.NewsType
-import com.example.paperclipper.ui.theme.NewsprintTheme
-import com.example.paperclipper.ui.theme.Newsreader
-import com.example.paperclipper.ui.theme.SplineMono
-import com.example.paperclipper.ui.theme.newsTextFieldColors
 import com.example.paperclipper.data.Clipping
 import com.example.paperclipper.data.ClippingStatus
 import com.example.paperclipper.data.CommentEntity
@@ -170,7 +151,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         sharedImageUri.value = extractSharedImage(intent)
         setContent {
-            NewsprintTheme {
+            MaterialTheme {
                 ClipperApp(
                     sharedImageUri = sharedImageUri.value,
                     onSharedImageHandled = { sharedImageUri.value = null },
@@ -373,7 +354,6 @@ fun ClipperApp(
             BackHandler { screen = Screen.Home }
             PreviewScreen(
                 file = s.file,
-                onClose = { screen = Screen.Home },
                 onCrop = { screen = Screen.Crop(s.file) },
                 onSelect = { screen = Screen.Lasso(s.file) },
             )
@@ -406,10 +386,6 @@ fun ClipperApp(
                 val comments by remember(s.fileName) { vm.commentsFor(s.fileName) }
                     .collectAsState(initial = emptyList())
                 BackHandler { screen = Screen.Home }
-                // The clipping's stable archive number (oldest = 001), shown in the app bar.
-                val number = remember(clippings, clipping.file) {
-                    clippings.sortedBy { it.createdAt }.indexOfFirst { it.file == clipping.file } + 1
-                }
                 DetailScreen(
                     clipping = clipping,
                     allTags = allTags,
@@ -422,7 +398,6 @@ fun ClipperApp(
                     onAddComment = { text -> vm.addComment(s.fileName, text) },
                     onDeleteComment = { id -> vm.deleteComment(id) },
                     onOpenImage = { screen = Screen.Viewer(clipping.file) },
-                    number = number,
                 )
             }
         }
@@ -559,70 +534,26 @@ internal fun HomeScreen(
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet(
-                drawerContainerColor = NP.Paper,
-                drawerContentColor = NP.Ink,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 22.dp),
-                ) {
-                    Spacer(Modifier.height(40.dp))
+            ModalDrawerSheet {
+                Text(
+                    "Paper Clipper AI",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(16.dp),
+                )
+                if (userEmail != null) {
                     Text(
-                        buildAnnotatedString {
-                            append("Paper Clipper")
-                            withStyle(
-                                SpanStyle(
-                                    color = NP.Red,
-                                    fontFamily = SplineMono,
-                                    fontSize = 12.sp,
-                                    baselineShift = BaselineShift.Superscript,
-                                ),
-                            ) { append(" AI") }
-                        },
-                        style = TextStyle(fontFamily = Newsreader, fontWeight = FontWeight.Medium, fontSize = 30.sp, color = NP.Ink),
+                        "Logged in as ${userName ?: userEmail}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(start = 16.dp, bottom = 12.dp),
                     )
-                    Text(
-                        "LOCAL-FIRST · ON DEVICE",
-                        style = NewsType.kicker,
-                        modifier = Modifier.padding(top = 9.dp),
-                    )
+                }
+                HorizontalDivider()
 
-                    if (userEmail != null) {
-                        Row(
-                            modifier = Modifier.padding(top = 18.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(11.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier.size(38.dp).background(NP.Ink),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    initialsFor(userName, userEmail),
-                                    style = NewsType.label.copy(color = NP.Paper, fontSize = 13.sp),
-                                )
-                            }
-                            Column {
-                                Text(
-                                    userName ?: "Signed in",
-                                    style = TextStyle(fontFamily = Newsreader, fontSize = 15.sp, color = NP.Ink),
-                                )
-                                Text(
-                                    userEmail,
-                                    style = NewsType.meta,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-                    }
-
-                    MastheadRule(Modifier.padding(top = 16.dp, bottom = 2.dp))
-
-                    if (userEmail == null) {
-                        DrawerRow("Log in", "Sign in with your Google account") {
+                if (userEmail == null) {
+                    NavigationDrawerItem(
+                        label = { Text("Log in") },
+                        selected = false,
+                        onClick = {
                             scope.launch { drawerState.close() }
                             val intent = signInIntentProvider()
                             if (intent != null) {
@@ -634,8 +565,13 @@ internal fun HomeScreen(
                                     Toast.LENGTH_LONG,
                                 ).show()
                             }
-                        }
-                        DrawerRow("Sign in with email", "Use an email and password") {
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                    NavigationDrawerItem(
+                        label = { Text("Sign in with email") },
+                        selected = false,
+                        onClick = {
                             scope.launch { drawerState.close() }
                             if (emailAuthAvailable()) {
                                 showEmailAuth = true
@@ -646,67 +582,71 @@ internal fun HomeScreen(
                                     Toast.LENGTH_LONG,
                                 ).show()
                             }
-                        }
-                    }
-                    DrawerRow("Export", "Save a ZIP of every clipping") {
-                        scope.launch { drawerState.close() }
-                        exportLauncher.launch("paper-clippings.zip")
-                    }
-                    DrawerRow("Clear all", "Erase everything on this device", titleColor = NP.Red) {
-                        scope.launch { drawerState.close() }
-                        showClearConfirm = true
-                    }
-
-                    Spacer(Modifier.weight(1f))
-
-                    // Bottom-pinned: Log out (if signed in) then Give feedback at the very bottom.
-                    Hairline()
-                    if (userEmail != null) {
-                        DrawerRow("Log out", null) {
-                            scope.launch { drawerState.close() }
-                            onSignOut()
-                        }
-                    }
-                    DrawerRow("Give feedback", null) {
-                        scope.launch { drawerState.close() }
-                        showFeedback = true
-                    }
-                    Text(
-                        "VERSION 1.0 · ENCRYPTED ON DEVICE",
-                        style = NewsType.meta,
-                        modifier = Modifier.padding(vertical = 18.dp),
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     )
                 }
+                NavigationDrawerItem(
+                    label = { Text("Export") },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        exportLauncher.launch("paper-clippings.zip")
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+                NavigationDrawerItem(
+                    label = { Text("Clear all", color = MaterialTheme.colorScheme.error) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        showClearConfirm = true
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+
+                Spacer(Modifier.weight(1f))
+
+                // Bottom-pinned actions: Log out (if logged in) then Give feedback at the very bottom.
+                HorizontalDivider()
+                if (userEmail != null) {
+                    NavigationDrawerItem(
+                        label = { Text("Log out") },
+                        selected = false,
+                        onClick = {
+                            scope.launch { drawerState.close() }
+                            onSignOut()
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
+                NavigationDrawerItem(
+                    label = { Text("Give feedback") },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        showFeedback = true
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                )
             }
         },
     ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = NP.Paper,
         topBar = {
-            Column(modifier = Modifier.background(NP.Paper)) {
-                if (inSelectionMode) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .statusBarsPadding()
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
+            if (inSelectionMode) {
+                TopAppBar(
+                    title = { Text("${selected.size} selected") },
+                    navigationIcon = {
                         IconButton(onClick = { selected = emptySet() }) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_close),
                                 contentDescription = "Clear selection",
-                                tint = NP.Ink,
                             )
                         }
-                        Text(
-                            "${selected.size} selected",
-                            style = NewsType.label.copy(color = NP.Ink),
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(start = 6.dp),
-                        )
+                    },
+                    actions = {
                         IconButton(
                             onClick = {
                                 val toDelete = selected.toList()
@@ -717,122 +657,82 @@ internal fun HomeScreen(
                             Icon(
                                 painter = painterResource(R.drawable.ic_delete),
                                 contentDescription = "Delete selected",
-                                tint = NP.Ink,
                             )
                         }
-                    }
-                } else if (clippings.isEmpty()) {
-                    // First-run masthead: menu + centered wordmark, no search field.
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .statusBarsPadding()
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_menu),
-                                contentDescription = "Open menu",
-                                tint = NP.Ink,
-                            )
-                        }
-                        Text(
-                            "PAPER CLIPPER",
-                            style = NewsType.label.copy(color = NP.Ink, letterSpacing = 2.8.sp),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Spacer(Modifier.width(48.dp))
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .statusBarsPadding()
-                            .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_menu),
-                                contentDescription = "Open menu",
-                                tint = NP.Ink,
-                            )
-                        }
-                        OutlinedTextField(
-                            value = query,
-                            onValueChange = { query = it },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            textStyle = NewsType.body.copy(color = NP.Ink),
-                            shape = RoundedCornerShape(2.dp),
-                            colors = newsTextFieldColors(),
-                            placeholder = { Text("Search clippings", style = NewsType.serifItalic) },
-                            leadingIcon = {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_search),
-                                    contentDescription = null,
-                                )
-                            },
-                            trailingIcon = {
-                                if (query.isNotEmpty()) {
-                                    IconButton(onClick = { query = "" }) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_close),
-                                            contentDescription = "Clear search",
-                                        )
-                                    }
-                                }
-                            },
-                        )
-                        IconButton(onClick = { showFilter = true }) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_filter),
-                                contentDescription = "Filter",
-                                tint = NP.Muted,
-                            )
-                        }
-                    }
-                }
-                Hairline()
-            }
-        },
-        bottomBar = {
-            Column(modifier = Modifier.background(NP.Paper)) {
-                Hairline()
+                    },
+                )
+            } else {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        .statusBarsPadding()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    NewsButton(
-                        text = "Take a photo",
-                        onClick = onTakePhoto,
+                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_menu),
+                            contentDescription = "Open menu",
+                        )
+                    }
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
                         modifier = Modifier.weight(1f),
-                        filled = true,
-                        upper = false,
+                        singleLine = true,
+                        placeholder = { Text("Search clippings") },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_search),
+                                contentDescription = null,
+                            )
+                        },
+                        trailingIcon = {
+                            if (query.isNotEmpty()) {
+                                IconButton(onClick = { query = "" }) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_close),
+                                        contentDescription = "Clear search",
+                                    )
+                                }
+                            }
+                        },
                     )
-                    NewsButton(
-                        text = "Choose photo",
-                        onClick = onPickPhoto,
-                        modifier = Modifier.weight(1f),
-                        filled = false,
-                        upper = false,
-                    )
+                    IconButton(onClick = { showFilter = true }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_filter),
+                            contentDescription = "Filter",
+                        )
+                    }
+                }
+            }
+        },
+        bottomBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Button(
+                    onClick = onTakePhoto,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Take a photo")
+                }
+                OutlinedButton(
+                    onClick = onPickPhoto,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Choose photo")
                 }
             }
         },
     ) { padding ->
-        when {
-            // First run: the rich onboarding sheet (carries the exact empty-library copy).
-            clippings.isEmpty() -> OnboardingEmptyState(modifier = Modifier.padding(padding))
-
-            // A search that matches nothing.
-            visible.isEmpty() -> Box(
+        if (visible.isEmpty()) {
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
@@ -840,48 +740,109 @@ internal fun HomeScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    "No clippings match your search.",
-                    style = NewsType.serifItalic.copy(fontSize = 16.sp),
+                    text = if (clippings.isEmpty()) {
+                        "No clippings yet — tap Take a photo below."
+                    } else {
+                        "No clippings match your search."
+                    },
+                    style = MaterialTheme.typography.bodyLarge,
                 )
             }
-
-            else -> {
-                // Stable "№" per clipping: oldest = 001, independent of the current sort/search.
-                val numbers = remember(clippings) {
-                    clippings.sortedBy { it.createdAt }
-                        .mapIndexed { i, c -> c.file to (i + 1) }
-                        .toMap()
-                }
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp),
-                ) {
-                    item(key = "masthead") { LibraryMasthead(count = clippings.size) }
-                    dateSections(visible).forEach { (header, sectionItems) ->
-                        stickyHeader(key = "header:$header") { DateHeader(header, sortDescending) }
-                        items(items = sectionItems, key = { it.file.absolutePath }) { clipping ->
-                            ClippingRow(
-                                clipping = clipping,
-                                number = numbers[clipping.file] ?: 0,
-                                query = query,
-                                isSelected = clipping.file in selected,
-                                inSelectionMode = inSelectionMode,
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                dateSections(visible).forEach { (header, sectionItems) ->
+                    stickyHeader(key = "header:$header") { DateHeader(header) }
+                    items(items = sectionItems, key = { it.file.absolutePath }) { clipping ->
+                    val file = clipping.file
+                    val isSelected = file in selected
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .combinedClickable(
                                 onClick = {
                                     if (inSelectionMode) {
-                                        selected = if (clipping.file in selected) {
-                                            selected - clipping.file
-                                        } else {
-                                            selected + clipping.file
-                                        }
+                                        selected =
+                                            if (isSelected) selected - file else selected + file
                                     } else {
                                         onOpen(clipping)
                                     }
                                 },
-                                onLongClick = { selected = selected + clipping.file },
-                            )
+                                onLongClick = { selected = selected + file },
+                            ),
+                    ) {
+                        AsyncImage(
+                            model = file,
+                            contentDescription = "Saved clipping",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        // Caption over a bottom scrim. While searching, show the matching excerpt
+                        // with the query highlighted (Preview-style); otherwise status + summary.
+                        val q = query.trim()
+                        val matchField = if (q.isEmpty()) {
+                            null
+                        } else {
+                            clipping.extractedText?.takeIf { it.contains(q, ignoreCase = true) }
+                                ?: clipping.summary?.takeIf { it.contains(q, ignoreCase = true) }
                         }
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .fillMaxWidth()
+                                .background(Color.Black.copy(alpha = 0.45f))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            if (matchField != null) {
+                                Text(
+                                    text = searchSnippet(matchField, q),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            } else {
+                                // For an analyzed clipping show its AI heading as the label; fall
+                                // back to the status word ("Summary"/"Analyzing…"/"Analysis failed").
+                                val label = clipping.heading
+                                    ?.takeIf { it.isNotBlank() && clipping.status == ClippingStatus.SUCCESS }
+                                    ?: statusLabel(clipping.status)
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Color.White,
+                                )
+                                val caption = clipping.summary ?: clipping.errorMessage
+                                if (!caption.isNullOrBlank()) {
+                                    Text(
+                                        text = caption,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                        if (inSelectionMode) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.35f)),
+                            ) {
+                                Checkbox(checked = isSelected, onCheckedChange = null)
+                            }
+                        }
+                    }
                     }
                 }
             }
@@ -1145,291 +1106,14 @@ internal fun dateSections(visible: List<Clipping>): List<Pair<String, List<Clipp
 internal fun fmt(pattern: String, time: Long): String =
     SimpleDateFormat(pattern, Locale.getDefault()).format(Date(time))
 
-/** The library masthead: the "Clippings" nameplate, a filed-count kicker, and the triple rule. */
 @Composable
-private fun LibraryMasthead(count: Int) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 14.dp, bottom = 2.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text("Clippings", style = NewsType.masthead)
-            Text("$count FILED", style = NewsType.label, modifier = Modifier.padding(bottom = 4.dp))
-        }
-        MastheadRule(Modifier.padding(top = 8.dp))
-    }
-}
-
-/** A date section divider — red dateline, hairline fill, and the active sort note. */
-@Composable
-private fun DateHeader(text: String, sortDescending: Boolean) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(NP.Paper)
-            .padding(top = 13.dp, bottom = 3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Text(text.uppercase(), style = NewsType.kicker)
-        Box(Modifier.weight(1f).height(1.dp).background(NP.HairSoft))
-        Text(if (sortDescending) "NEWEST FIRST" else "OLDEST FIRST", style = NewsType.meta)
-    }
-}
-
-/** The red kicker word standing in for a category — driven by the clipping's analysis state. */
-private fun rowKicker(status: ClippingStatus): String = when (status) {
-    ClippingStatus.PENDING, ClippingStatus.PROCESSING -> "Reading…"
-    ClippingStatus.SUCCESS -> "Filed"
-    ClippingStatus.ERROR -> "Failed"
-}
-
-/** One filed clipping, set as a newspaper index entry: thumbnail · kicker/№ · headline · summary · date. */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun ClippingRow(
-    clipping: Clipping,
-    number: Int,
-    query: String,
-    isSelected: Boolean,
-    inSelectionMode: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-) {
-    val status = clipping.status
-    val analyzing = status == ClippingStatus.PENDING || status == ClippingStatus.PROCESSING
-    val q = query.trim()
-    // While searching, the body line becomes the highlighted match excerpt (and the headline falls
-    // back to a neutral label) so the matched text is rendered exactly once.
-    val matchField = if (q.isEmpty()) {
-        null
-    } else {
-        clipping.extractedText?.takeIf { it.contains(q, ignoreCase = true) }
-            ?: clipping.summary?.takeIf { it.contains(q, ignoreCase = true) }
-    }
-    val hasHeading = !clipping.heading.isNullOrBlank() && status == ClippingStatus.SUCCESS
-    val headline = when {
-        hasHeading -> clipping.heading!!
-        matchField != null -> statusLabel(status)
-        !clipping.summary.isNullOrBlank() -> clipping.summary!!
-        !clipping.errorMessage.isNullOrBlank() -> clipping.errorMessage!!
-        else -> statusLabel(status)
-    }
-
-    Column {
-        Hairline()
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                .padding(vertical = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 78.dp, height = 92.dp)
-                    .border(BorderStroke(1.dp, NP.Hair), RoundedCornerShape(1.dp))
-                    .background(NP.PaperAlt),
-            ) {
-                AsyncImage(
-                    model = clipping.file,
-                    contentDescription = "Saved clipping",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                if (inSelectionMode) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(4.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.35f)),
-                    ) {
-                        Checkbox(checked = isSelected, onCheckedChange = null)
-                    }
-                }
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    if (analyzing) AnalyzingDot()
-                    Text(rowKicker(status).uppercase(), style = NewsType.kicker)
-                    Text("№ %03d".format(number), style = NewsType.meta)
-                }
-                Text(
-                    headline,
-                    style = NewsType.headline,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-                when {
-                    matchField != null -> Text(
-                        searchSnippet(matchField, q),
-                        style = NewsType.bodySmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 3.dp),
-                    )
-                    hasHeading && !clipping.summary.isNullOrBlank() -> Text(
-                        clipping.summary!!,
-                        style = NewsType.bodySmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 3.dp),
-                    )
-                }
-                Text(
-                    fmt("MMM d, yyyy", clipping.createdAt).uppercase(),
-                    style = NewsType.meta,
-                    modifier = Modifier.padding(top = 7.dp),
-                )
-            }
-        }
-    }
-}
-
-/** First-run onboarding: a clip-here illustration, the empty-archive copy, and the three steps. */
-@Composable
-private fun OnboardingEmptyState(modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(width = 188.dp, height = 150.dp)
-                .graphicsLayer { rotationZ = -3f },
-            contentAlignment = Alignment.Center,
-        ) {
-            // Dashed red "cut-out" frame over a cream sheet.
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(NP.Card)
-                    .drawBehind {
-                        drawRect(
-                            color = NP.Red,
-                            style = Stroke(
-                                width = 1.5.dp.toPx(),
-                                pathEffect = PathEffect.dashPathEffect(
-                                    floatArrayOf(3.dp.toPx(), 3.dp.toPx()),
-                                ),
-                            ),
-                        )
-                    },
-            )
-            Box(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxSize()
-                    .background(NP.PaperAlt),
-            )
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(1.dp))
-                    .background(NP.Red)
-                    .padding(horizontal = 9.dp, vertical = 5.dp),
-            ) {
-                Text("CLIP HERE", style = NewsType.meta.copy(color = NP.OnRed))
-            }
-            Text(
-                "✂",
-                color = NP.Red,
-                fontSize = 17.sp,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .offset(x = (-4).dp, y = (-13).dp),
-            )
-        }
-        Spacer(Modifier.height(30.dp))
+private fun DateHeader(text: String) {
+    Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
         Text(
-            "Your archive is empty.",
-            style = NewsType.title.copy(fontSize = 25.sp),
-            textAlign = TextAlign.Center,
+            text = text,
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(vertical = 6.dp),
         )
-        Spacer(Modifier.height(11.dp))
-        // The exact copy the smoke / UI tests assert on.
-        Text(
-            "No clippings yet — tap Take a photo below.",
-            style = NewsType.serifItalic,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(26.dp))
-        // The three steps as a ruled editorial table.
-        MastheadRule()
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            OnboardStep("01", "Photograph", Modifier.weight(1f))
-            Box(Modifier.width(1.dp).height(44.dp).background(NP.HairSoft))
-            OnboardStep("02", "Analyze", Modifier.weight(1f))
-            Box(Modifier.width(1.dp).height(44.dp).background(NP.HairSoft))
-            OnboardStep("03", "File", Modifier.weight(1f))
-        }
-        Hairline()
-    }
-}
-
-@Composable
-private fun OnboardStep(num: String, label: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier.padding(vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(num, style = NewsType.kicker.copy(fontWeight = FontWeight.SemiBold, fontSize = 13.sp))
-        Text(label.uppercase(), style = NewsType.meta, modifier = Modifier.padding(top = 5.dp))
-    }
-}
-
-/** A drawer line item: a serif title over an uppercase mono caption, with a closing hairline. */
-@Composable
-private fun DrawerRow(
-    title: String,
-    subtitle: String?,
-    titleColor: Color = NP.Ink,
-    onClick: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 14.dp),
-    ) {
-        Text(
-            title,
-            style = TextStyle(fontFamily = Newsreader, fontWeight = FontWeight.Medium, fontSize = 17.sp, color = titleColor),
-        )
-        if (subtitle != null) {
-            Text(
-                subtitle.uppercase(),
-                style = NewsType.meta.copy(color = if (titleColor == NP.Red) Color(0xFFC79189) else NP.Faint),
-                modifier = Modifier.padding(top = 3.dp),
-            )
-        }
-    }
-    Hairline()
-}
-
-/** Two-letter monogram for the drawer avatar, from the display name or email. */
-private fun initialsFor(name: String?, email: String?): String {
-    val source = name?.takeIf { it.isNotBlank() } ?: email?.takeIf { it.isNotBlank() } ?: return "·"
-    val parts = source.trim().split(' ', '.', '_', '@').filter { it.isNotBlank() }
-    return when {
-        parts.size >= 2 -> (parts[0].take(1) + parts[1].take(1)).uppercase()
-        parts.isNotEmpty() -> parts[0].take(2).uppercase()
-        else -> "·"
     }
 }
 
@@ -1456,44 +1140,30 @@ internal fun DetailScreen(
     onAddComment: (String) -> Unit,
     onDeleteComment: (Long) -> Unit,
     onOpenImage: () -> Unit,
-    number: Int = 0,
 ) {
     val context = LocalContext.current
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = NP.Paper,
         topBar = {
-            Column(modifier = Modifier.background(NP.Paper)) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+            TopAppBar(
+                title = { Text("Clipping") },
+                navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             painter = painterResource(R.drawable.ic_close),
                             contentDescription = "Back",
-                            tint = NP.Ink,
                         )
                     }
-                    Text(
-                        if (number > 0) "CLIPPING · № %03d".format(number) else "CLIPPING",
-                        style = NewsType.label.copy(color = NP.Muted),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1f),
-                    )
+                },
+                actions = {
                     IconButton(onClick = { shareClipping(context, clipping) }) {
                         Icon(
                             painter = painterResource(R.drawable.ic_share),
                             contentDescription = "Share",
-                            tint = NP.Ink,
                         )
                     }
-                }
-                Hairline()
-            }
+                },
+            )
         },
     ) { padding ->
         Column(
@@ -1501,85 +1171,63 @@ internal fun DetailScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 16.dp),
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // Hero: the clipping matted in cream, with a capture caption beneath.
-            Box(
+            AsyncImage(
+                model = clipping.file,
+                contentDescription = "Clipping (tap to zoom)",
+                contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(BorderStroke(1.dp, NP.Hair), RoundedCornerShape(1.dp))
-                    .background(NP.Card)
-                    .padding(6.dp)
+                    .height(240.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .clickable(onClick = onOpenImage),
-            ) {
-                AsyncImage(
-                    model = clipping.file,
-                    contentDescription = "Clipping (tap to zoom)",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 280.dp)
-                        .background(NP.PaperAlt),
-                )
-            }
-            Text(
-                "TAP TO ZOOM · CAPTURED ${fmt("MMM d, yyyy", clipping.createdAt).uppercase()}",
-                style = NewsType.meta,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
             )
-
-            Spacer(Modifier.height(16.dp))
+            Text(
+                "Tap the image to view full screen and zoom",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             when (clipping.status) {
                 ClippingStatus.PENDING, ClippingStatus.PROCESSING -> {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        AnalyzingDot()
-                        Text("Reading the clipping…", style = NewsType.serifItalic)
+                        CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                        Text("Analyzing with Gemini…", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
                 ClippingStatus.ERROR -> {
-                    Text("Analysis failed", style = NewsType.title.copy(fontSize = 20.sp))
-                    Spacer(Modifier.height(8.dp))
-                    Text(clipping.errorMessage ?: "Unknown error", style = NewsType.body)
-                    Spacer(Modifier.height(14.dp))
-                    NewsButton("Retry", onClick = onRetry, upper = false, modifier = Modifier.wrapContentWidth())
+                    Text("Analysis failed", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = clipping.errorMessage ?: "Unknown error",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Button(onClick = onRetry) { Text("Retry") }
                 }
                 ClippingStatus.SUCCESS -> {
-                    Text(fmt("MMMM yyyy", clipping.createdAt).uppercase(), style = NewsType.kicker)
-                    // The AI heading replaces the static "Summary" label above the summary body.
-                    Text(
-                        clipping.heading?.takeIf { it.isNotBlank() } ?: "Summary",
-                        style = NewsType.title,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                    MastheadRule(Modifier.padding(top = 14.dp, bottom = 12.dp))
                     if (!clipping.summary.isNullOrBlank()) {
+                        Text(
+                            clipping.heading?.takeIf { it.isNotBlank() } ?: "Summary",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
                         SelectionContainer {
-                            Text(clipping.summary, style = NewsType.body)
+                            Text(clipping.summary, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                     if (!clipping.extractedText.isNullOrBlank()) {
-                        Text(
-                            "Article",
-                            style = NewsType.label.copy(color = NP.Muted),
-                            modifier = Modifier.padding(top = 18.dp, bottom = 6.dp),
-                        )
+                        Text("Article", style = MaterialTheme.typography.titleMedium)
                         SelectionContainer {
-                            Text(dropCap(clipping.extractedText), style = NewsType.body)
+                            Text(clipping.extractedText, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
-            Hairline()
-            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
             TagsSection(
                 allTags = allTags,
                 assignedTagIds = assignedTagIds,
@@ -1587,9 +1235,7 @@ internal fun DetailScreen(
                 onCreateTag = onCreateTag,
             )
 
-            Spacer(Modifier.height(20.dp))
-            Hairline()
-            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
             CommentsSection(
                 comments = comments,
                 onAddComment = onAddComment,
@@ -1597,20 +1243,6 @@ internal fun DetailScreen(
             )
         }
     }
-}
-
-/** Renders [text] with an oversized oxidized-red initial, evoking a printed drop cap. */
-private fun dropCap(text: String): AnnotatedString = buildAnnotatedString {
-    if (text.isEmpty()) return@buildAnnotatedString
-    withStyle(
-        SpanStyle(
-            color = NP.Red,
-            fontFamily = Newsreader,
-            fontWeight = FontWeight.Medium,
-            fontSize = 30.sp,
-        ),
-    ) { append(text.take(1)) }
-    append(text.drop(1))
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1623,25 +1255,34 @@ private fun TagsSection(
 ) {
     var newTag by remember { mutableStateOf("") }
 
-    Text("TAGS", style = NewsType.label.copy(color = NP.Muted))
+    Text("Tags", style = MaterialTheme.typography.titleMedium)
     Text(
-        "Shared across every clipping — tap to file or unfile.",
-        style = NewsType.serifItalic.copy(fontSize = 12.5.sp),
-        modifier = Modifier.padding(top = 3.dp, bottom = 10.dp),
+        "Tags are shared across all clippings — tap to add or remove for this one.",
+        style = MaterialTheme.typography.bodySmall,
     )
     if (allTags.isNotEmpty()) {
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             allTags.forEach { tag ->
                 val selected = tag.id in assignedTagIds
-                TagChip(name = tag.name, selected = selected) { onToggleTag(tag, !selected) }
+                FilterChip(
+                    selected = selected,
+                    onClick = { onToggleTag(tag, !selected) },
+                    label = { Text(tag.name) },
+                    leadingIcon = if (selected) {
+                        {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_check),
+                                contentDescription = null,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
             }
         }
     }
     Row(
-        modifier = Modifier.padding(top = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -1650,49 +1291,15 @@ private fun TagsSection(
             onValueChange = { newTag = it },
             modifier = Modifier.weight(1f),
             singleLine = true,
-            textStyle = NewsType.body.copy(color = NP.Ink),
-            shape = RoundedCornerShape(2.dp),
-            colors = newsTextFieldColors(),
-            placeholder = { Text("New tag", style = NewsType.serifItalic) },
+            placeholder = { Text("New tag") },
         )
-        NewsButton(
-            text = "Add",
+        Button(
             onClick = {
                 onCreateTag(newTag)
                 newTag = ""
             },
-            ink = true,
             enabled = newTag.isNotBlank(),
-            upper = false,
-        )
-    }
-}
-
-/** A newsprint tag chip — filled red with a check when filed, ink-outlined otherwise. */
-@Composable
-private fun TagChip(name: String, selected: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(2.dp)
-    Row(
-        modifier = Modifier
-            .clip(shape)
-            .then(
-                if (selected) Modifier.background(NP.Red)
-                else Modifier.border(BorderStroke(1.dp, NP.Hair), shape),
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 11.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        if (selected) {
-            Icon(
-                painter = painterResource(R.drawable.ic_check),
-                contentDescription = null,
-                tint = NP.OnRed,
-                modifier = Modifier.size(12.dp),
-            )
-        }
-        Text(name, style = NewsType.label.copy(color = if (selected) NP.OnRed else NP.Muted))
+        ) { Text("Add") }
     }
 }
 
@@ -1704,65 +1311,45 @@ private fun CommentsSection(
 ) {
     var newComment by remember { mutableStateOf("") }
 
-    Text("MARGINALIA", style = NewsType.label.copy(color = NP.Muted))
-    Spacer(Modifier.height(11.dp))
+    Text("Comments", style = MaterialTheme.typography.titleMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = newComment,
+            onValueChange = { newComment = it },
+            modifier = Modifier.weight(1f),
+            placeholder = { Text("Add a comment") },
+        )
+        Button(
+            onClick = {
+                onAddComment(newComment)
+                newComment = ""
+            },
+            enabled = newComment.isNotBlank(),
+        ) { Text("Add") }
+    }
     comments.forEach { comment ->
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 11.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
+        Row(verticalAlignment = Alignment.Top) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(comment.text, style = NewsType.body.copy(fontSize = 13.5.sp, color = NP.Ink))
+                Text(comment.text, style = MaterialTheme.typography.bodyMedium)
                 Text(
                     DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
-                        .format(Date(comment.createdAt))
-                        .uppercase(),
-                    style = NewsType.meta,
-                    modifier = Modifier.padding(top = 5.dp),
+                        .format(Date(comment.createdAt)),
+                    style = MaterialTheme.typography.labelSmall,
                 )
             }
             IconButton(onClick = { onDeleteComment(comment.id) }) {
                 Icon(
                     painter = painterResource(R.drawable.ic_delete),
                     contentDescription = "Delete comment",
-                    tint = NP.Faint,
                 )
             }
         }
-        Hairline()
-        Spacer(Modifier.height(11.dp))
-    }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        OutlinedTextField(
-            value = newComment,
-            onValueChange = { newComment = it },
-            modifier = Modifier.weight(1f),
-            textStyle = NewsType.body.copy(color = NP.Ink),
-            shape = RoundedCornerShape(2.dp),
-            colors = newsTextFieldColors(),
-            placeholder = { Text("Add a comment", style = NewsType.serifItalic) },
-        )
-        NewsButton(
-            text = "Add",
-            onClick = {
-                onAddComment(newComment)
-                newComment = ""
-            },
-            enabled = newComment.isNotBlank(),
-            upper = false,
-        )
     }
 }
 
 @Composable
 private fun PreviewScreen(
     file: File,
-    onClose: () -> Unit,
     onCrop: () -> Unit,
     onSelect: () -> Unit,
 ) {
@@ -1774,83 +1361,44 @@ private fun PreviewScreen(
     var rotation by remember { mutableStateOf(0) }
     var rotating by remember { mutableStateOf(false) }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(NP.captureBackdrop),
+            .background(Color.Black),
     ) {
+        AsyncImage(
+            model = remember(file, rotation) {
+                ImageRequest.Builder(context)
+                    .data(file)
+                    .memoryCacheKey("${file.absolutePath}#$rotation")
+                    .build()
+            },
+            contentDescription = "Captured clipping",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize(),
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(
-                "✕",
-                color = Color(0xFFF3ECDF),
-                fontSize = 20.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(2.dp))
-                    .clickable(onClick = onClose)
-                    .padding(4.dp),
-            )
-            Text(
-                "PREVIEW",
-                style = NewsType.label.copy(color = Color(0xFFB8B09C)),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f),
-            )
-            Spacer(Modifier.width(20.dp))
-        }
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 30.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            AsyncImage(
-                model = remember(file, rotation) {
-                    ImageRequest.Builder(context)
-                        .data(file)
-                        .memoryCacheKey("${file.absolutePath}#$rotation")
-                        .build()
+            Button(onClick = onCrop) { Text("Crop") }
+            Button(
+                onClick = {
+                    if (rotating) return@Button
+                    rotating = true
+                    scope.launch {
+                        rotateClippingFile(file)
+                        rotation++
+                        rotating = false
+                    }
                 },
-                contentDescription = "Captured clipping",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                "TRIM THE CLIPPING, THEN FILE & ANALYZE",
-                style = NewsType.meta.copy(color = Color(0xFF8C8675)),
-                modifier = Modifier.padding(bottom = 14.dp),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ChromeButton("Crop", onClick = onCrop)
-                ChromeButton(
-                    "Rotate",
-                    onClick = {
-                        if (!rotating) {
-                            rotating = true
-                            scope.launch {
-                                rotateClippingFile(file)
-                                rotation++
-                                rotating = false
-                            }
-                        }
-                    },
-                )
-                ChromeButton("Select", onClick = onSelect, accent = true)
-            }
+                enabled = !rotating,
+            ) { Text("Rotate") }
+            Button(onClick = onSelect) { Text("Select") }
         }
     }
 }
@@ -1878,38 +1426,31 @@ private fun CropScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(NP.captureBackdrop),
+            .background(Color.Black),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(
-                "CANCEL",
-                style = NewsType.button.copy(color = Color(0xFFB8B09C)),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(2.dp))
-                    .clickable(onClick = onCancel)
-                    .padding(horizontal = 6.dp, vertical = 6.dp),
-            )
-            Text("CROP", style = NewsType.label.copy(color = Color(0xFF8C8675)))
-            ChromeButton("Done", onClick = { if (image != null) state.crop() }, accent = true)
+            Button(onClick = onCancel) { Text("Cancel") }
+            Button(onClick = { if (image != null) state.crop() }) { Text("Done") }
         }
-        // The crop area gets its own inset region so all four corner handles stay reachable.
+        // The crop area is given its own region below the buttons and inset from
+        // the screen edges so all four corner handles stay reachable to drag-resize.
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(24.dp),
             contentAlignment = Alignment.Center,
         ) {
             val img = image
             if (img == null) {
-                CircularProgressIndicator(color = NP.Paper)
+                CircularProgressIndicator(color = Color.White)
             } else {
                 Cropify(
                     bitmap = img,
@@ -1925,15 +1466,6 @@ private fun CropScreen(
                 )
             }
         }
-        Text(
-            "DRAG THE CORNERS TO CROP",
-            style = NewsType.meta.copy(color = Color(0xFF8C8675)),
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(bottom = 18.dp),
-        )
     }
 }
 
@@ -1969,53 +1501,42 @@ private fun LassoScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(NP.captureBackdrop),
+            .background(Color.Black),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(
-                "CANCEL",
-                style = NewsType.button.copy(color = Color(0xFFB8B09C)),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(2.dp))
-                    .clickable(onClick = onCancel)
-                    .padding(horizontal = 6.dp, vertical = 6.dp),
-            )
-            Text("SELECT", style = NewsType.label.copy(color = Color(0xFF8C8675)))
-            ChromeButton(
-                "Done",
-                accent = true,
+            Button(onClick = onCancel) { Text("Cancel") }
+            Button(
                 onClick = {
-                    val img = image
-                    if (img != null && points.size >= 3 && canvasSize != IntSize.Zero) {
-                        scope.launch {
-                            val out = saveLasso(context, img, points.toList(), canvasSize)
-                            if (out != null) {
-                                file.delete()
-                                onSelected(out)
-                            }
+                    val img = image ?: return@Button
+                    if (points.size < 3 || canvasSize == IntSize.Zero) return@Button
+                    scope.launch {
+                        val out = saveLasso(context, img, points.toList(), canvasSize)
+                        if (out != null) {
+                            file.delete()
+                            onSelected(out)
                         }
                     }
                 },
-            )
+            ) { Text("Done") }
         }
 
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(24.dp),
             contentAlignment = Alignment.Center,
         ) {
             val img = image
             if (img == null) {
-                CircularProgressIndicator(color = NP.Paper)
+                CircularProgressIndicator(color = Color.White)
             } else {
                 Canvas(
                     modifier = Modifier
@@ -2046,55 +1567,26 @@ private fun LassoScreen(
                         dstOffset = IntOffset(offX.roundToInt(), offY.roundToInt()),
                         dstSize = IntSize(drawnW.roundToInt(), drawnH.roundToInt()),
                     )
-                    // Dim the photo so the kept selection reads brighter (design 08).
-                    drawRect(
-                        color = Color(0xFF0F0C08).copy(alpha = 0.28f),
-                        topLeft = Offset(offX, offY),
-                        size = Size(drawnW, drawnH),
-                    )
                     if (points.isNotEmpty()) {
-                        val cream = Color(0xFFF3ECDF)
                         val path = Path().apply {
                             moveTo(points.first().x, points.first().y)
                             for (i in 1 until points.size) lineTo(points[i].x, points[i].y)
                             close()
                         }
-                        drawPath(path = path, color = cream.copy(alpha = 0.16f))
+                        drawPath(path = path, color = Color.White.copy(alpha = 0.25f))
                         drawPath(
                             path = path,
-                            color = cream,
+                            color = Color.White,
                             style = Stroke(
-                                width = 2.5.dp.toPx(),
+                                width = 3.dp.toPx(),
                                 cap = StrokeCap.Round,
                                 join = StrokeJoin.Round,
-                                pathEffect = PathEffect.dashPathEffect(
-                                    floatArrayOf(2.5.dp.toPx(), 2.dp.toPx()),
-                                ),
                             ),
                         )
-                        // Oxidized-red grab markers, each ringed in cream, at the lasso's ends.
-                        listOf(points.first(), points.last()).forEach { p ->
-                            drawCircle(color = NP.Red, radius = 5.dp.toPx(), center = p)
-                            drawCircle(
-                                color = cream,
-                                radius = 6.5.dp.toPx(),
-                                center = p,
-                                style = Stroke(width = 1.5.dp.toPx()),
-                            )
-                        }
                     }
                 }
             }
         }
-        Text(
-            "DRAW AROUND THE ARTICLE TO KEEP IT",
-            style = NewsType.meta.copy(color = Color(0xFF8C8675)),
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(bottom = 18.dp),
-        )
     }
 }
 
