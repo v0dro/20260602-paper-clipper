@@ -1,8 +1,10 @@
 package com.example.paperclipper.data
 
 import android.content.Context
+import androidx.work.ExistingWorkPolicy
 import com.example.paperclipper.gemini.GeminiClient
 import com.example.paperclipper.gemini.GeminiResult
+import com.example.paperclipper.report.UsageReportScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -38,6 +40,7 @@ class ClippingsRepository(
     private val dao: ClippingDao = db.clippingDao()
     private val tagDao: TagDao = db.tagDao()
     private val commentDao: CommentDao = db.commentDao()
+    private val pendingReportDao: PendingUsageReportDao = db.pendingUsageReportDao()
     private val usageCounter = DailyUsageCounter(context)
 
     /** All global tags, usable from any clipping. */
@@ -93,6 +96,12 @@ class ClippingsRepository(
 
     /** Syncs DB rows with the files on disk, then analyzes anything still pending. */
     suspend fun reconcileAndProcess() {
+        // Straggler catch on every app open: if queued usage reports exist but their upload work
+        // was lost (e.g. app data partially cleared), re-schedule it. KEEP no-ops when it's alive.
+        pendingReportDao.oldestCreatedAt()?.let {
+            UsageReportScheduler.schedule(context, it, ExistingWorkPolicy.KEEP)
+        }
+
         val files = listClippingFiles(context)
         val fileNames = files.map { it.name }.toSet()
         val known = dao.allFileNames().toSet()
@@ -266,6 +275,21 @@ class ClippingsRepository(
                     errorMessage = result.message,
                     model = model,
                     processedAt = System.currentTimeMillis(),
+                )
+            }
+            result.usageReport?.let { report ->
+                pendingReportDao.insert(
+                    PendingUsageReportEntity(
+                        reportId = report.reportId,
+                        createdAt = System.currentTimeMillis(),
+                        payloadJson = report.toJson().toString(),
+                    ),
+                )
+                // KEEP: an already-pending run (for an equally-old-or-older report) fires first.
+                UsageReportScheduler.schedule(
+                    context,
+                    pendingReportDao.oldestCreatedAt()!!,
+                    ExistingWorkPolicy.KEEP,
                 )
             }
         }

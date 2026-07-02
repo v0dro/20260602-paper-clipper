@@ -69,6 +69,14 @@ Android app. Android sources are under `../android/app/src/main/java/com/example
 | `gemini/UsageReport.kt` — worker `usage` stats attached to results, JSON via `toJson()`/`fromJson()` | `Codable` struct with the **same JSON field names** (wire contract with the server's `/report-usage`); omit nils when encoding |
 | `data/DailyUsageCounter.kt` — SharedPreferences `paperclipper_usage`, UTC day string, `LIMIT = 100`; repository gates `allowFallback` and increments on every Success | `UserDefaults` counter, same UTC-day reset + gating in `ClippingStore` |
 
+## Deferred usage-report upload — ❌ not yet ported
+| Android | iOS port |
+|---|---|
+| `data/PendingUsageReportEntity/Dao` (Room v4 `pending_usage_reports`: reportId PK, createdAt epoch ms, payloadJson = finished wire JSON) | SwiftData `@Model` with the same three fields; store the wire JSON verbatim |
+| `report/UsageReportUploader.kt` — drains eligible (≥24 h old) reports to `POST /report-usage` in batches of 25; deletes ids from **both** `accepted` and `duplicate` ack lists; any failure → retry later | direct port in `Networking/` hitting the same endpoint (SERVER_URL only, never the worker) |
+| `report/UsageReportScheduler.kt` + `UsageReportWorker.kt` — WorkManager unique work `usage-report-upload`, initialDelay = oldest report + 24 h, `NetworkType.CONNECTED`, exponential backoff (30 min, capped 5 h), survives reboot, retries until acked | **no WorkManager equivalent**: use `BGTaskScheduler` (`BGProcessingTaskRequest` with `requiresNetworkConnectivity = true`, identifier in Info.plist `BGTaskSchedulerPermittedIdentifiers`). iOS may defer/skip background tasks, so ALSO flush eligible reports on app foreground (e.g. from `reconcileAndProcess`) as the reliable path |
+| Repository wiring — queue row + schedule on every result carrying `usageReport`; straggler re-schedule on app open | same wiring in `ClippingStore` |
+
 ## Accepted platform mappings (not a regression)
 - **Network timeouts.** Android uses separate `connectTimeout`/`readTimeout` (`HttpURLConnection`).
   iOS `URLRequest.timeoutInterval` is a single value, set to the Android **read** timeout (90s for

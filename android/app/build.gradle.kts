@@ -115,6 +115,9 @@ dependencies {
     // SQLCipher encrypts the Room database at rest. Native (Java + .so) lib, so it is unaffected by
     // the Kotlin 2.0.21 metadata ceiling. Used only on the production code path (AppDatabase.get()).
     implementation(libs.sqlcipher.android)
+    // WorkManager drives the deferred usage-report upload (see report/). 2.10.0 verified against the
+    // Kotlin 2.0.21 metadata ceiling; if a bump ever trips it, 2.9.1 is the known-safe fallback.
+    implementation(libs.androidx.work.runtime.ktx)
 
     // Firebase Auth + Google Sign-In (Java libs, no Kotlin-metadata concerns).
     // NOTE: the com.google.gms.google-services plugin is intentionally NOT applied yet —
@@ -135,6 +138,8 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockk)
     testImplementation(libs.androidx.room.runtime)
+    // TestListenableWorkerBuilder / WorkManagerTestInitHelper for the usage-report worker tests.
+    testImplementation(libs.androidx.work.testing)
     // Compose AnnotatedString etc. are already on the main classpath; ui-test is for androidTest only.
 
     androidTestImplementation(libs.androidx.junit)

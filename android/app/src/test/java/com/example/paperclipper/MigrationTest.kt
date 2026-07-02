@@ -107,4 +107,36 @@ class MigrationTest {
         }
         db.close()
     }
+
+    @Test
+    fun migration3To4_fullChainAddsPendingReportsTableAndPreservesData() {
+        // Run the whole 1 -> 2 -> 3 -> 4 chain over seeded v1 data, like a long-dormant install.
+        val db = openV1()
+        db.execSQL(
+            "INSERT INTO clippings (fileName, createdAt, status, summary) " +
+                "VALUES ('a.jpg', 100, 'SUCCESS', 'hello')",
+        )
+        AppDatabase.MIGRATION_1_2.migrate(db)
+        AppDatabase.MIGRATION_2_3.migrate(db)
+
+        AppDatabase.MIGRATION_3_4.migrate(db)
+
+        // New (empty) queue table exists and is writable with the expected columns.
+        assertTrue(db.exists("table", "pending_usage_reports"))
+        db.execSQL(
+            "INSERT INTO pending_usage_reports (reportId, createdAt, payloadJson) " +
+                "VALUES ('r1', 42, '{}')",
+        )
+        db.query("SELECT COUNT(*) FROM pending_usage_reports").use {
+            assertTrue(it.moveToFirst())
+            assertEquals(1, it.getInt(0))
+        }
+
+        // The seeded clipping survived the entire chain.
+        db.query("SELECT summary FROM clippings WHERE fileName = 'a.jpg'").use {
+            assertTrue(it.moveToFirst())
+            assertEquals("hello", it.getString(0))
+        }
+        db.close()
+    }
 }

@@ -6,19 +6,27 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.paperclipper.data.AppDatabase
 import com.example.paperclipper.data.ClippingEntity
 import com.example.paperclipper.data.ClippingStatus
+import androidx.work.ExistingWorkPolicy
 import com.example.paperclipper.data.ClippingsRepository
 import com.example.paperclipper.data.DailyUsageCounter
+import com.example.paperclipper.data.PendingUsageReportEntity
 import com.example.paperclipper.data.clippingsDir
 import com.example.paperclipper.gemini.GeminiClient
 import com.example.paperclipper.gemini.GeminiResult
 import com.example.paperclipper.gemini.UsageReport
+import com.example.paperclipper.report.UsageReportScheduler
+import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
+import io.mockk.just
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
+import io.mockk.verify
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -55,11 +63,15 @@ class ClippingsRepositoryTest {
         dir = clippingsDir(context)
         dir.listFiles()?.forEach { it.deleteRecursively() }
         mockkObject(GeminiClient)
+        // Stub the scheduler so no test ever initializes real WorkManager.
+        mockkObject(UsageReportScheduler)
+        every { UsageReportScheduler.schedule(any(), any(), any()) } just Runs
     }
 
     @After
     fun tearDown() {
         unmockkObject(GeminiClient)
+        unmockkObject(UsageReportScheduler)
         db.close()
     }
 
@@ -264,6 +276,73 @@ class ClippingsRepositoryTest {
         repo.reconcileAndProcess()
 
         coVerify { GeminiClient.analyze(any(), any(), any(), false) }
+    }
+
+    // ---- deferred usage-report queue --------------------------------------------------------------
+
+    @Test
+    fun processPending_queuesWorkerReportAndSchedulesUpload() = runTest {
+        writeImage("q.jpg")
+        val report = UsageReport(
+            reportId = "r-queued",
+            ts = "2026-07-02T00:00:00Z",
+            userId = "u",
+            mimeType = "image/jpeg",
+            requestBytes = 3,
+            status = 200,
+        )
+        stubAnalyze(GeminiResult.Success("x", "y", usageReport = report))
+
+        repo.reconcileAndProcess()
+
+        val row = db.pendingUsageReportDao().eligible(Long.MAX_VALUE, 10).single()
+        assertEquals("r-queued", row.reportId)
+        // The stored payload is the finished wire JSON the uploader will send verbatim.
+        assertEquals("r-queued", JSONObject(row.payloadJson).getString("reportId"))
+        coVerify { UsageReportScheduler.schedule(any(), row.createdAt, ExistingWorkPolicy.KEEP) }
+    }
+
+    @Test
+    fun processPending_queuesWorkerReportOnErrorToo() = runTest {
+        // The worker attaches usage even to its 422/502 (tokens were spent) — those queue as well.
+        writeImage("qe.jpg")
+        val report = UsageReport(
+            reportId = "r-err",
+            ts = "2026-07-02T00:00:00Z",
+            userId = "u",
+            mimeType = "image/jpeg",
+            requestBytes = 3,
+            status = 422,
+            error = "No text found in the image",
+        )
+        stubAnalyze(GeminiResult.Error("No text found in the image", usageReport = report))
+
+        repo.reconcileAndProcess()
+
+        assertEquals(1, db.pendingUsageReportDao().count())
+    }
+
+    @Test
+    fun processPending_serverServedResultQueuesNothing() = runTest {
+        writeImage("srv.jpg")
+        stubAnalyze(GeminiResult.Success("x", "y")) // no usageReport -> home server answered
+
+        repo.reconcileAndProcess()
+
+        assertEquals(0, db.pendingUsageReportDao().count())
+        verify(exactly = 0) { UsageReportScheduler.schedule(any(), any(), any()) }
+    }
+
+    @Test
+    fun reconcile_reschedulesUploadForLeftoverQueuedReports() = runTest {
+        // Straggler catch: a queued report with no live work (e.g. WorkManager state lost) gets its
+        // upload re-scheduled on the next app open, keyed off the oldest report's createdAt.
+        db.pendingUsageReportDao().insert(PendingUsageReportEntity("stale", 123L, "{}"))
+        stubAnalyze(GeminiResult.Success("x", "y"))
+
+        repo.reconcileAndProcess()
+
+        verify { UsageReportScheduler.schedule(any(), 123L, ExistingWorkPolicy.KEEP) }
     }
 
     // ---- delete / clearAll ----------------------------------------------------------------------

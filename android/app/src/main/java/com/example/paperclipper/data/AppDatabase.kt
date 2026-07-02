@@ -15,14 +15,16 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         TagEntity::class,
         ClippingTagCrossRef::class,
         CommentEntity::class,
+        PendingUsageReportEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun clippingDao(): ClippingDao
     abstract fun tagDao(): TagDao
     abstract fun commentDao(): CommentDao
+    abstract fun pendingUsageReportDao(): PendingUsageReportDao
 
     companion object {
         // v2 adds global tags, the clipping<->tag link table, and per-clipping comments.
@@ -67,6 +69,20 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v4 adds the queue of deferred usage reports (Worker-fallback stats awaiting upload to the
+        // home server). New empty table only — existing data untouched. SQL matches Room's generated
+        // schema for PendingUsageReportEntity exactly, so schema validation passes post-migration.
+        @VisibleForTesting
+        internal val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `pending_usage_reports` " +
+                        "(`reportId` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, " +
+                        "`payloadJson` TEXT NOT NULL, PRIMARY KEY(`reportId`))",
+                )
+            }
+        }
+
         private const val DB_NAME = "paperclipper.db"
         private const val SECURE_PREFS = "paperclipper_secure"
         private const val FLAG_ENCRYPTED = "db_encrypted_v1"
@@ -107,7 +123,7 @@ abstract class AppDatabase : RoomDatabase() {
 
             return Room.databaseBuilder(appContext, AppDatabase::class.java, DB_NAME)
                 .openHelperFactory(SupportOpenHelperFactory(passphrase))
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
         }
     }
