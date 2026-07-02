@@ -61,6 +61,14 @@ Android app. Android sources are under `../android/app/src/main/java/com/example
 | Server `/analyze` returns `heading` (+ server-side article cleanup) | `AnalyzeClient` parses `heading` | cleanup is server-side, transparent to the client |
 | "Paper Clipper" → "Paper Clipper AI" | display name, nav title, menu header, export title | |
 
+## Worker fallback + device daily counter — ❌ not yet ported
+| Android | iOS port |
+|---|---|
+| `WORKER_URL` BuildConfig field (gitignored `local.properties`; empty = fallback disabled) | add `WORKER_URL` to `Config.xcconfig` → Info.plist → `AppConfig` |
+| `GeminiClient.analyze(…, allowFallback)` — tries `SERVER_URL`, then retries `WORKER_URL`; `isGatewayUnreachable(code, body)` classifier (true iff status ∈ {502, 503, 504, 520–530} **and** body is not a JSON object with an `"error"` key — the home server's own JSON 502 must NOT fall back) | direct port into `AnalyzeClient` (classifier + single-attempt helper are pure and testable) |
+| `gemini/UsageReport.kt` — worker `usage` stats attached to results, JSON via `toJson()`/`fromJson()` | `Codable` struct with the **same JSON field names** (wire contract with the server's `/report-usage`); omit nils when encoding |
+| `data/DailyUsageCounter.kt` — SharedPreferences `paperclipper_usage`, UTC day string, `LIMIT = 100`; repository gates `allowFallback` and increments on every Success | `UserDefaults` counter, same UTC-day reset + gating in `ClippingStore` |
+
 ## Accepted platform mappings (not a regression)
 - **Network timeouts.** Android uses separate `connectTimeout`/`readTimeout` (`HttpURLConnection`).
   iOS `URLRequest.timeoutInterval` is a single value, set to the Android **read** timeout (90s for

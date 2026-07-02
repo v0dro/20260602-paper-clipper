@@ -38,6 +38,7 @@ class ClippingsRepository(
     private val dao: ClippingDao = db.clippingDao()
     private val tagDao: TagDao = db.tagDao()
     private val commentDao: CommentDao = db.commentDao()
+    private val usageCounter = DailyUsageCounter(context)
 
     /** All global tags, usable from any clipping. */
     val allTags: Flow<List<TagEntity>> = tagDao.observeAll()
@@ -233,18 +234,29 @@ class ClippingsRepository(
                 continue
             }
             dao.updateStatus(row.fileName, ClippingStatus.PROCESSING.name)
-            val result = GeminiClient.analyze(file.readBytes(), mimeTypeFor(file), userId)
+            // Stop offering the Worker fallback once the device-local daily count hits the limit
+            // (the home server path enforces its own quota, so it stays available).
+            val allowFallback = usageCounter.countToday() < DailyUsageCounter.LIMIT
+            val result = GeminiClient.analyze(file.readBytes(), mimeTypeFor(file), userId, allowFallback)
+            // A non-null usageReport means the Worker fallback answered (either outcome): record the
+            // provenance and queue the report for its deferred upload to the home server.
+            val model = if (result.usageReport != null) "worker" else "server"
             when (result) {
-                is GeminiResult.Success -> dao.updateResult(
-                    fileName = row.fileName,
-                    status = ClippingStatus.SUCCESS.name,
-                    extractedText = result.extractedText,
-                    summary = result.summary,
-                    heading = result.heading.ifBlank { null },
-                    errorMessage = null,
-                    model = "server",
-                    processedAt = System.currentTimeMillis(),
-                )
+                is GeminiResult.Success -> {
+                    // Counts successes from BOTH backends: the counter tracks total device usage;
+                    // enforcement above only gates the worker.
+                    usageCounter.incrementToday()
+                    dao.updateResult(
+                        fileName = row.fileName,
+                        status = ClippingStatus.SUCCESS.name,
+                        extractedText = result.extractedText,
+                        summary = result.summary,
+                        heading = result.heading.ifBlank { null },
+                        errorMessage = null,
+                        model = model,
+                        processedAt = System.currentTimeMillis(),
+                    )
+                }
                 is GeminiResult.Error -> dao.updateResult(
                     fileName = row.fileName,
                     status = ClippingStatus.ERROR.name,
@@ -252,7 +264,7 @@ class ClippingsRepository(
                     summary = null,
                     heading = null,
                     errorMessage = result.message,
-                    model = "server",
+                    model = model,
                     processedAt = System.currentTimeMillis(),
                 )
             }

@@ -91,7 +91,7 @@ There are no AVDs yet. Create one via **Android Studio → Tools → Device Mana
 ├── build.gradle.kts                     # root: plugins apply false
 ├── settings.gradle.kts                  # rootProject.name = "paper-clipper"
 ├── gradle.properties                    # org.gradle.java.home → JBR
-├── local.properties                     # sdk.dir, SERVER_URL, PROXY_TOKEN (gitignored)
+├── local.properties                     # sdk.dir, SERVER_URL, WORKER_URL, PROXY_TOKEN (gitignored)
 ├── gradle/
 │   ├── libs.versions.toml               # source of truth for all deps + versions
 │   └── wrapper/                         # gradle-wrapper.jar + .properties

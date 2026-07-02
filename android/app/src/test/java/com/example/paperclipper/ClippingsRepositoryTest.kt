@@ -7,10 +7,13 @@ import com.example.paperclipper.data.AppDatabase
 import com.example.paperclipper.data.ClippingEntity
 import com.example.paperclipper.data.ClippingStatus
 import com.example.paperclipper.data.ClippingsRepository
+import com.example.paperclipper.data.DailyUsageCounter
 import com.example.paperclipper.data.clippingsDir
 import com.example.paperclipper.gemini.GeminiClient
 import com.example.paperclipper.gemini.GeminiResult
+import com.example.paperclipper.gemini.UsageReport
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import kotlinx.coroutines.flow.first
@@ -64,7 +67,7 @@ class ClippingsRepositoryTest {
         File(dir, name).apply { writeBytes(byteArrayOf(0x1, 0x2, 0x3)) }
 
     private fun stubAnalyze(result: GeminiResult) {
-        coEvery { GeminiClient.analyze(any(), any(), any()) } returns result
+        coEvery { GeminiClient.analyze(any(), any(), any(), any()) } returns result
     }
 
     // ---- tag / comment CRUD ---------------------------------------------------------------------
@@ -142,6 +145,27 @@ class ClippingsRepositoryTest {
         assertEquals(ClippingStatus.SUCCESS.name, row.status)
         assertEquals("extracted", row.extractedText)
         assertEquals("summary", row.summary)
+        // No usageReport -> the home server answered.
+        assertEquals("server", row.model)
+    }
+
+    @Test
+    fun reconcile_workerServedResultIsRecordedWithWorkerModel() = runTest {
+        writeImage("via.jpg")
+        val report = UsageReport(
+            reportId = "r1",
+            ts = "2026-07-02T00:00:00Z",
+            userId = "u",
+            mimeType = "image/jpeg",
+            requestBytes = 3,
+            status = 200,
+        )
+        stubAnalyze(GeminiResult.Success("x", "y", usageReport = report))
+
+        repo.reconcileAndProcess()
+
+        // A usageReport only exists when the Worker fallback answered — provenance must say so.
+        assertEquals("worker", db.clippingDao().getAll().single().model)
     }
 
     @Test
@@ -194,6 +218,52 @@ class ClippingsRepositoryTest {
         repo.retry("gone.jpg")
 
         assertTrue(db.clippingDao().getAll().isEmpty())
+    }
+
+    // ---- daily counter / fallback gating ----------------------------------------------------------
+
+    @Test
+    fun processPending_successIncrementsDailyCounter() = runTest {
+        writeImage("count.jpg")
+        stubAnalyze(GeminiResult.Success("x", "y"))
+
+        repo.reconcileAndProcess()
+
+        assertEquals(1, DailyUsageCounter(context).countToday())
+    }
+
+    @Test
+    fun processPending_errorDoesNotIncrementDailyCounter() = runTest {
+        writeImage("fail.jpg")
+        stubAnalyze(GeminiResult.Error("boom"))
+
+        repo.reconcileAndProcess()
+
+        assertEquals(0, DailyUsageCounter(context).countToday())
+    }
+
+    @Test
+    fun processPending_allowsFallbackWhileUnderTheLimit() = runTest {
+        writeImage("under.jpg")
+        stubAnalyze(GeminiResult.Success("x", "y"))
+
+        repo.reconcileAndProcess()
+
+        coVerify { GeminiClient.analyze(any(), any(), any(), true) }
+    }
+
+    @Test
+    fun processPending_deniesFallbackOnceLimitReached() = runTest {
+        // Seed the shared SharedPreferences counter up to the limit; the repository's own instance
+        // reads the same file.
+        val counter = DailyUsageCounter(context)
+        repeat(DailyUsageCounter.LIMIT) { counter.incrementToday() }
+        writeImage("over.jpg")
+        stubAnalyze(GeminiResult.Success("x", "y"))
+
+        repo.reconcileAndProcess()
+
+        coVerify { GeminiClient.analyze(any(), any(), any(), false) }
     }
 
     // ---- delete / clearAll ----------------------------------------------------------------------

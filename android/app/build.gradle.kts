@@ -17,13 +17,16 @@ if (file("google-services.json").exists()) {
 // The app talks to the backend proxy (see ../server) instead of Gemini directly, so the Gemini
 // key stays off the device. SERVER_URL + PROXY_TOKEN are read from the gitignored local.properties
 // and surfaced via BuildConfig. PROXY_TOKEN is a lightweight abuse-gate (it ships in the APK), not
-// a high-value secret — the valuable Gemini key lives only on the server.
+// a high-value secret — the valuable Gemini key lives only on the server. WORKER_URL is the
+// optional Cloudflare Worker fallback (see ../worker) used when SERVER_URL is unreachable; leave
+// it empty to disable the fallback entirely.
 val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
 val serverUrl: String = localProps.getProperty("SERVER_URL", "")
 val proxyToken: String = localProps.getProperty("PROXY_TOKEN", "")
+val workerUrl: String = localProps.getProperty("WORKER_URL", "")
 
 // Release signing is read from the gitignored keystore.properties (storeFile, storePassword,
 // keyAlias, keyPassword). When the file is absent (CI, fresh checkout) the release build stays
@@ -48,6 +51,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
         buildConfigField("String", "PROXY_TOKEN", "\"$proxyToken\"")
+        buildConfigField("String", "WORKER_URL", "\"$workerUrl\"")
     }
 
     signingConfigs {
