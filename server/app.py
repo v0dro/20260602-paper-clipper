@@ -94,6 +94,7 @@ _LOG_COLUMNS = (
     "feedback_message", "email", "error",
     "prompt_tokens", "output_tokens", "total_tokens", "thoughts_tokens", "cached_tokens",
     "image_tokens", "gemini_calls", "model_version", "est_cost_usd",
+    "report_id", "via", "received_at",
 )
 
 # Columns added after the table first shipped — applied to existing DBs via ALTER TABLE so an old
@@ -102,6 +103,9 @@ _LOG_ADDED_COLUMNS = {
     "prompt_tokens": "INTEGER", "output_tokens": "INTEGER", "total_tokens": "INTEGER",
     "thoughts_tokens": "INTEGER", "cached_tokens": "INTEGER", "image_tokens": "INTEGER",
     "gemini_calls": "INTEGER", "model_version": "TEXT", "est_cost_usd": "REAL",
+    # Deferred usage reports (/report-usage): the client-generated dedup id, how the request was
+    # actually served ("worker"), and when the report reached this server.
+    "report_id": "TEXT", "via": "TEXT", "received_at": "TEXT",
 }
 
 
@@ -121,6 +125,11 @@ def _log_conn() -> sqlite3.Connection:
     for col, col_type in _LOG_ADDED_COLUMNS.items():
         if col not in existing:
             conn.execute(f"ALTER TABLE request_log ADD COLUMN {col} {col_type}")
+    # Dedup key for /report-usage ingestion. SQLite allows unlimited NULLs under a unique index,
+    # so the middleware's own rows (which never set report_id) are unaffected.
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_request_log_report_id ON request_log(report_id)"
+    )
     conn.commit()
     return conn
 
@@ -139,12 +148,32 @@ def log_request(**fields) -> None:
         print(f"[req-log] failed to persist: {exc}", flush=True)
 
 
+def insert_usage_report(row: dict) -> bool:
+    """Inserts one deferred usage report into request_log; False if its report_id is already there.
+
+    INSERT OR IGNORE against the unique report_id index makes retried batches idempotent — a
+    client that lost the ack simply re-sends and gets the ids back as duplicates. Unlike
+    log_request, failures propagate: the client must not delete a report the server didn't store.
+    """
+    with _log_lock, _log_conn() as conn:
+        placeholders = ", ".join(["?"] * len(_LOG_COLUMNS))
+        cursor = conn.execute(
+            f"INSERT OR IGNORE INTO request_log ({', '.join(_LOG_COLUMNS)}) "
+            f"VALUES ({placeholders})",
+            tuple(row.get(col) for col in _LOG_COLUMNS),
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+
+
 GEMINI_ENDPOINT = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 )
 
 # The newspaper-clipping prompt lives here now (moved off the device), so it can be tuned
 # without rebuilding the app.
+# SOURCE OF TRUTH SYNC: worker/src/prompts.ts carries a verbatim copy of PROMPT and
+# CLEANUP_PROMPT for the Cloudflare Worker fallback — keep both files in sync when editing.
 PROMPT = (
     "You are given a photograph. First determine whether it actually contains readable text to "
     "transcribe (a newspaper clipping, a printed page, a sign, handwriting, etc.). "
@@ -252,6 +281,41 @@ class FeedbackRequest(BaseModel):
     message: str
     email: str | None = None
     appVersion: str | None = None
+
+
+class UsageReportItem(BaseModel):
+    """One /analyze call the app served via the Cloudflare Worker fallback, reported after the fact.
+
+    Deliberately lenient: only the identity/time/status trio is required, everything else has a
+    sensible default and tolerates an explicit null — one odd field must never 422-wedge the
+    app's retry loop forever.
+    """
+
+    reportId: str
+    ts: str
+    status: int
+    userId: str | None = None
+    appVersion: str | None = None
+    mimeType: str | None = None
+    requestBytes: int | None = None
+    latencyMs: int | None = None
+    error: str | None = None
+    extractedText: str | None = None
+    summary: str | None = None
+    # int | None (not plain int) so a client sending null doesn't 422 the whole batch;
+    # the endpoint coerces None back to 0 when building the row.
+    promptTokens: int | None = 0
+    outputTokens: int | None = 0
+    totalTokens: int | None = 0
+    thoughtsTokens: int | None = 0
+    cachedTokens: int | None = 0
+    imageTokens: int | None = 0
+    geminiCalls: int | None = 0
+    modelVersion: str | None = None
+
+
+class UsageReportRequest(BaseModel):
+    reports: list[UsageReportItem]
 
 
 @app.post("/feedback")
@@ -420,6 +484,81 @@ async def analyze(
     _record_usage(request, usage)  # log tokens spent even when all attempts failed
     request.state.log_extra["error"] = last_error
     raise HTTPException(status_code=502, detail=last_error)
+
+
+@app.post("/report-usage")
+async def report_usage(
+    req: UsageReportRequest,
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_user_id: str | None = Header(default=None),
+):
+    """Ingests deferred usage reports for /analyze calls the Cloudflare Worker fallback served.
+
+    Each item becomes one request_log row, keeping the client's original analyze-time timestamp
+    verbatim (that's the point of the reports). Idempotent via the unique report_id index, so the
+    app retries batches until acknowledged without ever double-counting. Deliberately does NOT
+    touch the daily-limit usage table — the reports arrive ≥24 h late by design.
+    """
+    # --- auth ---
+    if not PROXY_TOKEN:
+        raise HTTPException(status_code=500, detail="Server PROXY_TOKEN is not configured")
+    expected = f"Bearer {PROXY_TOKEN}"
+    if authorization != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing token")
+
+    user_id = (x_user_id or "anonymous").strip() or "anonymous"
+    # The middleware's own audit row for this /report-usage call gets only the precise user_id;
+    # the report contents belong in their own rows, never in this one.
+    request.state.log_extra = {"user_id": user_id}
+
+    if len(req.reports) > 100:
+        raise HTTPException(status_code=400, detail="Too many reports in one batch (max 100)")
+
+    received_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    accepted: list[str] = []
+    duplicate: list[str] = []
+    for item in req.reports:
+        row = {
+            "ts": item.ts,  # client's device clock at analyze time, stored verbatim
+            "endpoint": "analyze",
+            "method": "POST",
+            "path": "/analyze",
+            "user_id": item.userId,
+            "status": item.status,
+            "outcome": _OUTCOME_BY_STATUS.get(
+                item.status, "success" if item.status // 100 == 2 else "error"
+            ),
+            "latency_ms": item.latencyMs,
+            "request_bytes": item.requestBytes,
+            "mime_type": item.mimeType,
+            "app_version": item.appVersion,
+            "extracted_text": item.extractedText,
+            "summary": item.summary,
+            "error": item.error,
+            # "or 0": the counters are int | None for leniency — a null means "unknown", stored
+            # as 0 (the field default), which also keeps _cost_usd safe below.
+            "prompt_tokens": item.promptTokens or 0,
+            "output_tokens": item.outputTokens or 0,
+            "total_tokens": item.totalTokens or 0,
+            "thoughts_tokens": item.thoughtsTokens or 0,
+            "cached_tokens": item.cachedTokens or 0,
+            "image_tokens": item.imageTokens or 0,
+            "gemini_calls": item.geminiCalls or 0,
+            "model_version": item.modelVersion,
+            # Recomputed here with this server's configured prices — the client never sends cost.
+            "est_cost_usd": _cost_usd(item.promptTokens or 0, item.outputTokens or 0),
+            "report_id": item.reportId,
+            "via": "worker",
+            "received_at": received_at,
+        }
+        (accepted if insert_usage_report(row) else duplicate).append(item.reportId)
+
+    print(
+        f"[report-usage] user={user_id} accepted={len(accepted)} duplicate={len(duplicate)}",
+        flush=True,
+    )
+    return {"accepted": accepted, "duplicate": duplicate}
 
 
 async def _cleanup_article(raw_text: str) -> tuple[str, str]:

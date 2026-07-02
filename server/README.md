@@ -24,6 +24,21 @@ phone (app)  ──HTTPS──>  clipper.<yourdomain>  ──Cloudflare tunnel�
   (`hasText`). If it doesn't — e.g. a photo of a car — the server returns `422` instead of an
   invented article, and the call is **not** retried or counted against the daily limit.
 
+- `POST /report-usage` — header `Authorization: Bearer <PROXY_TOKEN>`, body:
+  ```json
+  { "reports": [ { "reportId": "uuid", "ts": "2026-07-02T04:12:33Z", "status": 200,
+                   "userId": "...", "appVersion": "...", "mimeType": "image/jpeg",
+                   "requestBytes": 123456, "latencyMs": 8123, "error": null,
+                   "extractedText": "...", "summary": "...",
+                   "promptTokens": 0, "outputTokens": 0, "totalTokens": 0,
+                   "thoughtsTokens": 0, "cachedTokens": 0, "imageTokens": 0,
+                   "geminiCalls": 2, "modelVersion": "..." } ] }
+  ```
+  → `200 {"accepted":["uuid",...],"duplicate":["uuid",...]}` (`401` bad/missing token, `400` more
+  than **100** items in one batch). Per item only `reportId`, `ts` and `status` are required — the
+  model is deliberately lenient so one odd field can't wedge the app's retry loop. See
+  [Deferred usage reports](#deferred-usage-reports-cloudflare-worker-fallback).
+
 ## 1. Setup (pip + venv)
 
 ```bash
@@ -122,6 +137,40 @@ sqlite3 usage.db "SELECT substr(ts,1,10) day, user_id, SUM(total_tokens) tokens,
 ```
 
 Rows logged before this feature have `NULL` token columns (hence the `IS NOT NULL` filter).
+
+## Deferred usage reports (Cloudflare Worker fallback)
+
+When this machine (or the tunnel) is down, the app falls back to a **Cloudflare Worker**
+(`worker/`) that replicates `/analyze` — but the Worker can't write this machine's `usage.db`.
+Instead the app caches a full usage report on-device for every fallback-served call and uploads
+it here ≥24 h later via `POST /report-usage`, retrying until acknowledged.
+
+Each report item becomes one ordinary `request_log` row (`endpoint='analyze'`), with:
+
+- `ts` = the **client's original analyze-time timestamp**, stored verbatim (that's the point);
+- `est_cost_usd` recomputed server-side from the reported token counts and this server's
+  `GEMINI_PRICE_*` prices — the client never sends cost;
+- `client_ip` left `NULL` (unknowable a day later).
+
+Three `request_log` columns exist for these rows (added via the usual ALTER-TABLE mechanism,
+`NULL` on all middleware-logged rows):
+
+| Column | Meaning |
+|---|---|
+| `report_id` | Client-generated UUID; a **unique index** on it makes ingestion idempotent. |
+| `via` | `'worker'` — the request was served by the Cloudflare Worker, not this server. |
+| `received_at` | Server time (ISO-8601 UTC) when the report actually arrived here. |
+
+**Dedup semantics:** ingestion is `INSERT OR IGNORE` on `report_id`, and the response splits ids
+into `accepted` (stored now) and `duplicate` (already stored — e.g. a retry after a lost ack).
+The app deletes its cached report on **either** list, so retries always converge. Batches are
+capped at 100 items (`400` above that). Reports deliberately do **not** back-fill the daily-limit
+`usage` table — they're ≥24 h stale by design.
+
+```bash
+# fallback-served requests, client time vs. arrival time
+sqlite3 usage.db "SELECT ts, received_at, user_id, status, total_tokens, est_cost_usd FROM request_log WHERE via='worker' ORDER BY id DESC LIMIT 20;"
+```
 
 ## Security note
 
